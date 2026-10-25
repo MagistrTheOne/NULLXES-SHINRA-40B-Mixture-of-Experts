@@ -9,7 +9,7 @@ from shinra.core.validation import validate_architecture
 
 
 class BalancingState(nn.Module):
-    def __init__(self, config: Configuration, *, device: str):
+    def __init__(self, config: Configuration, *, device: str, initial_bias: torch.Tensor):
         super().__init__()
         validate_architecture(config)
         for key in ("approval_reference", "learning_rate", "bound"):
@@ -17,7 +17,13 @@ class BalancingState(nn.Module):
                 raise ConfigurationError(f"router.balancing.{key}", "explicit approved value required")
         self.rate = config.get("router.balancing.learning_rate")
         self.bound = config.get("router.balancing.bound")
-        self.register_buffer("bias", torch.zeros(config.get("model.num_routed_experts"), dtype=torch.float32, device=device))
+        expected_shape = (config.get("model.num_routed_experts"),)
+        if (initial_bias.shape != expected_shape or initial_bias.dtype != torch.float32
+                or initial_bias.device != torch.device(device) or initial_bias.requires_grad):
+            raise ValueError("initial balancing bias must be non-trainable FP32 on the configured device")
+        if not bool(torch.isfinite(initial_bias).all()) or bool((initial_bias.abs() > self.bound).any()):
+            raise ValueError("initial balancing bias must be finite and within the configured bound")
+        self.register_buffer("bias", initial_bias.detach().clone())
         self.register_buffer("completed_step", torch.zeros((), dtype=torch.int64, device=device))
         self.phase = "COMMITTED"
         self.attempt: str | None = None

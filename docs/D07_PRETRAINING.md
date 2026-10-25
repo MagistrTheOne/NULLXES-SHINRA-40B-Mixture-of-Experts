@@ -59,6 +59,10 @@ Atomic rename допустим лишь если storage backend гаранти�
 
 Recovery: validate manifest/schema → identities/shards/ownership → восстановить модель, optimizer/scheduler/bias/cursor/RNG → подтвердить одну transaction на всех участниках → resume. Config drift, tokenizer mismatch и silent data skipping запрещены. Resharding между топологиями отдельная явно поддержанная операция, пока UNKNOWN.
 
+Source implementation: `src/shinra/checkpoint/` provides strict versioned JSON manifests, named tensor inventories, official Safetensors shard serialization, separate group indexes, shard/manifest hashes, optimizer state snapshots keyed by logical parameter names, staged writes, explicit capability-gated commit-marker publication, and identity-checked loading. Training-resume manifests require model/optimizer/router/RNG tensor groups plus committed step, scheduler, cursor, corpus/tokenizer identities, ownership, precision and source metadata. Callers must provide exact expected inventories; partial/unknown tensor groups are rejected.
+
+This code does not select a storage backend or claim crash durability. Publication requires an explicit caller-provided same-directory atomic-replace guarantee; it still does not assert durable directory metadata. Actual model/optimizer integration, GM compatibility, filesystem/object-store behavior and recovery correctness remain unverified. The chosen optimizer remains UNKNOWN; arbitrary Python optimizer objects are not serialized, and unsupported option/state types fail explicitly.
+
 ## Telemetry
 
 Только фактические loss numerator/denominator, consumed/committed tokens, attempts/steps, gradient norm, expert counts, bias saturation, failure reasons, checkpoint transaction IDs и реально измеренное время. События original forward/recompute различаются. Throughput/latency отсутствуют без измерения; нет fake progress.
@@ -66,3 +70,5 @@ Recovery: validate manifest/schema → identities/shards/ownership → восс�
 ## UNKNOWN / BLOCKED
 
 Optimizer/schedule/coefficients, batch/accumulation, clipping, token budget, initialization, corpus, GM API version, chosen backends, storage durability UNKNOWN. Соответствующие операции BLOCKED, архитектурные interfaces не подменяются defaults. Runtime correctness не подтверждена. NOT EXECUTED: training, model initialization, checkpoint save/load, collectives, tests.
+
+Engineering Order 005 статически подтвердил наличие model/MoE source, но не training/checkpoint/distributed implementations. Safetensors остаётся единственным разрешённым tensor payload format; dependency admission, adapter, transaction publication и recovery BLOCKED до подтверждения runtime compatibility и storage contract. Детали текущего состояния — в [Implementation status](IMPLEMENTATION_STATUS.md).

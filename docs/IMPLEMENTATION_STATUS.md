@@ -1,56 +1,38 @@
 # Implementation status
 
-24.10.2026. DOCUMENTATION REVIEW. V3.0 §19 требует отдельного подтверждения после сверки D01–D10.
+25.10.2026. Static status after Engineering Order 005 source audit. This is not runtime validation.
 
-## IMPLEMENTED
+## IMPLEMENTED SOURCE
 
-Исходные модули: нет. Подготовлены только проектные Markdown-артефакты. Нельзя считать наличие модульных контрактов реализацией.
+| Area | Existing modules | Static status |
+|---|---|---|
+| Core configuration | `core/configuration.py`, `core/validation.py` | Canonical single-file YAML decoder, immutable snapshot, closed schema, architecture and operation blockers |
+| Initialization | `core/initialization.py` | Explicit recipe and per-logical-tensor seed; FP32 sampling followed by storage-dtype conversion; actual initialization remains prohibited and blocked by null config fields |
+| Model | `model/embeddings.py`, `normalization.py`, `rope.py`, `attention.py`, `decoder.py`, `modeling.py`, `lm_head.py` | Source exists for embeddings, independent Q/K per-head RMSNorm, RoPE, blockwise exact GQA, residual decoder, full model assembly and untied output head |
+| MoE | `moe/router.py`, `experts.py`, `dispatch.py`, `combine.py`, `balancing.py`, `layer.py` | Source exists for FP32 routing, SwiGLU experts, stable local dispatch/combine, chunked assignments and balancing transaction state |
+| Checkpoint | `checkpoint/manifest.py`, `serialization.py`, `transactions.py`, `recovery.py` | Safetensors-only generic tensor groups, strict JSON indexes/manifest, hashes, stable-name optimizer snapshots, staged writer and explicit atomic-publication capability; static source only |
 
-| Stage V3.0 | Фактическое состояние |
+No source modules are present for tokenizer, data, training orchestration/objective/optimizer/scheduler, distributed communication, or inference generation/KV cache. Their contracts are not implementations.
+
+## IMPLEMENTATION GAPS
+
+| Stage | State |
 |---|---|
-| 1 Foundation | Не начат; schema contract D01, dependencies D09 |
-| 2 Core model | Не начат; D01/D04 |
-| 3 MoE | Не начат; D03 |
-| 4 Integration | Не начат; D01/D02 |
-| 5 Tokenizer | Не начат; D05; artifact отсутствует |
-| 6 Data pipeline | Не начат; D06; corpus NOT APPROVED |
-| 7 Training infrastructure | Не начат; D07 |
-| 8 Checkpointing | Не начат; D07; payload adapter UNKNOWN |
-| 9 Inference | Не начат; D01/D04 |
-| 10 Static source review | Неприменим без исходников; выполнена документальная сверка |
+| Foundation/configuration | Implemented source; static parser checks only |
+| Core model | Implemented source; backend/chunk/initialization prerequisites remain UNKNOWN |
+| MoE | Implemented local primitives; actual transaction orchestration and distributed expert transport absent |
+| Integration | Model assembly exists; runtime correctness unverified |
+| Tokenizer | Not implemented; artifacts and approval absent |
+| Data pipeline | Not implemented; corpus NOT APPROVED |
+| Training infrastructure | Not implemented; optimizer, objective, scheduler and engine absent |
+| Checkpointing | Source implemented for serialization and identity-checked recovery; operational model/training integration and storage durability remain unverified/BLOCKED |
+| Distributed | Not implemented; no collectives or ownership implementation |
+| Inference | Not implemented; no generation or KV-cache implementation |
 
-## FILES CREATED
+## STATIC AUDIT
 
-Все пути ниже относительно D:\NULLXES\NULLXES SHINRA 40B MoE:
-
-- docs/D01_ARCHITECTURE.md
-- docs/D06_DATA_PIPELINE.md
-- docs/D07_PRETRAINING.md
-- docs/D08_PROJECT_STRUCTURE.md
-- docs/D09_DEPENDENCIES.md
-- docs/D10_DECISIONS.md
-- docs/MODULE_CONTRACTS.md
-- docs/IMPLEMENTATION_STATUS.md
-- docs/ARCHITECTURE_CHANGELOG.md
-
-## FILES MODIFIED / RENAMED
-
-docs/README.md обновлён. D02–D05 переименованы в docs/D02_PARAMETERS.md, docs/D03_ROUTING.md, docs/D04_ATTENTION_CONTEXT.md, docs/D05_TOKENIZER.md без изменения их тела. Соответствие старых имён указано в ARCHITECTURE_CHANGELOG.md. Никаких Python/YAML/requirements/packaging файлов не создано.
-
-## STATICALLY REVIEWED
-
-Прочитаны существующие D02–D05. Сопоставлены expanded Q/K/V/O shapes, MoE sizes, normalized selected-logit routing, per-head QK-Norm, boundary/position и tokenizer contracts. В D10 зафиксированы отсутствие approval численных proposals и граница implementation authorization. Направления проектных imports описаны D08; фактический import graph ещё не существует.
-
-Выполнена текстовая сверка наличия D01–D10, относительных Markdown-ссылок, единственности канонических имён и отсутствия Python/YAML файлов в workspace. Проверка файлов не является runtime/model test. Публикации/API D09 прочитаны через web, без скачивания пакетов.
-
-## ARCHITECTURE COMPLIANCE
-
-Сохранены 48 MoE blocks, 128 experts, Top-8, width 800, shared=0, Q/KV=32/8, head_dim=128, hidden=2560, vocab=131072, untied embeddings, total=39694338560 и conventional active=4304898560. Изменений размерностей, Dense FFN, test infrastructure, data downloads и GPU planning нет.
-
-## UNVERIFIED / BLOCKED
-
-Всё runtime correctness, effective 256K context, training quality, backend/GM compatibility и recovery не проверены. Отдельное подтверждение реализации ожидается по V3.0 §19. Пооперационные неизвестные и предложения перечислены D10; отсутствие корпуса не блокирует независимые модули после разрешения.
+See [Engineering Order 005 audit](./ENGINEERING_ORDER_005_AUDIT.md) for the initial revision and findings. Engineering Order 006 Stage A source and dependency review is recorded in [D07](./D07_PRETRAINING.md) and [D09](./D09_DEPENDENCIES.md).
 
 ## NOT EXECUTED
 
-Модель и tokenizer не инициализировались/не обучались; forward/backward/inference/serving/tests не выполнялись. Ничего не установлено, модель/корпус/checkpoint не скачаны. Git-операции и удалённые вычисления не выполнялись.
+No model/tokenizer initialization, forward/backward, training, inference, test creation or execution, dependency installation, downloads, deployment, or GPU planning. No runtime correctness or performance claim is made.

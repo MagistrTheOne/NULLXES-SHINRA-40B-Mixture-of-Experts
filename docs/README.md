@@ -12,7 +12,7 @@
 | [D04 — Attention/context](D04_ATTENTION_CONTEXT.md) | Размерности утверждены; RoPE policy/curriculum PROPOSED |
 | [D05 — Tokenizer](D05_TOKENIZER.md) | Vocabulary size утверждён; IDs/алгоритмические детали PROPOSED |
 | [D06 — Data pipeline](D06_DATA_PIPELINE.md) | Контракты PROPOSED; corpus NOT APPROVED |
-| [D07 — Pretraining](D07_PRETRAINING.md) | Training/distributed/checkpoint contracts PROPOSED |
+| [D07 — Pretraining](D07_PRETRAINING.md) | Training/distributed contracts PROPOSED; Safetensors checkpoint source implemented, runtime unverified |
 | [D08 — Project structure](D08_PROJECT_STRUCTURE.md) | Целевое дерево, не существующие исходники |
 | [D09 — Dependencies](D09_DEPENDENCIES.md) | Источники проверены; actual GM compatibility UNKNOWN |
 | [D10 — Decisions](D10_DECISIONS.md) | Реестр approved/proposed/unknown и review items |

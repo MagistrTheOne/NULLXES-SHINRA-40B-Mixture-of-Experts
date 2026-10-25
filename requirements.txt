@@ -1,2 +1,3 @@
 # Direct runtime dependency. PyTorch/CUDA/NCCL are supplied by GM.
 PyYAML==6.0.3
+safetensors==0.6.2

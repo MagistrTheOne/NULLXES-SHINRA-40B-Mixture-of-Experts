@@ -1,6 +1,6 @@
 # D09 — Dependency register
 
-Обновлено 25.10.2026. Исходники используют yaml, torch и stdlib. requirements.txt содержит PyYAML==6.0.3; torch предоставляется GM. Установки и импорты SHINRA не выполнялись. Совместимость GM не подтверждена.
+Обновлено 25.10.2026. Исходники используют yaml, torch, Safetensors и stdlib. requirements.txt фиксирует PyYAML==6.0.3 и safetensors==0.6.2; torch предоставляется GM. Пакеты не устанавливались. Совместимость конкретной версии GM не подтверждена.
 
 | Component | Version evidence | License/source | Admission |
 |---|---|---|---|
@@ -8,7 +8,7 @@
 | PyYAML | 6.0.3 опубликован, Python >=3.8 по metadata | [Official project release](https://pypi.org/project/PyYAML/6.0.3/), MIT | Прямой parser dependency, выбран в исходниках; не установлен |
 | Python stdlib | Версия GM UNKNOWN | Поставляется с интерпретатором | json/hashlib/pathlib/dataclasses/enum/typing/codecs и др. не помещаются в requirements |
 | setuptools | 84.2.0, Python >=3.10 | [Release](https://pypi.org/project/setuptools/84.2.0/), MIT | Build backend в pyproject.toml; build не запускался |
-| Safetensors | Версия для Python adapter ещё не зафиксирована | [Official tensor API](https://huggingface.co/docs/safetensors/api/torch) | Формат утверждён пользователем 25.10.2026; adapter не реализован, dependency пока не добавлена |
+| Safetensors | 0.6.2 release metadata: Python >=3.9; PyTorch extra declares torch>=1.10 | [PyPI 0.6.2 metadata](https://pypi.org/pypi/safetensors/0.6.2/json), [v0.6.2 Apache-2.0 license](https://github.com/huggingface/safetensors/blob/v0.6.2/LICENSE), [official Torch API](https://huggingface.co/docs/safetensors/api/torch) | Pinned direct runtime dependency; compatible with project Python floor and documented torch lower bound. GM version remains UNKNOWN; package not installed |
 | CUDA/NCCL/drivers | Версии GM UNKNOWN | Управляются GM отдельно | Не добавлять системные компоненты в requirements |
 
 ## VERIFIED — API evidence, не runtime admission
@@ -20,7 +20,7 @@
 
 ## PROPOSED import graph
 
-core parser → yaml + stdlib; tokenizer/data metadata → stdlib; model/moe/training tensor operations → torch; distributed → torch.distributed; checkpoint tensor format Safetensors (adapter ещё отсутствует). Actual imports нужно сверить по каждому исходному файлу, когда он появится. До этого нельзя утверждать окончательный requirements.
+Текущие imports существующих модулей проверены статически: внешние roots — `yaml`, `torch` и лениво импортируемый `safetensors`; внутренние imports идут через `shinra`, остальное — stdlib. Safetensors checkpoint adapter теперь вызывает официальные `safetensors.torch.save_file` и `load_file`; проектная зависимость закреплена на 0.6.2. Этот релиз объявляет Python >=3.9 и его `torch` extra — torch>=1.10. Поскольку managed GM PyTorch version неизвестна, реальная совместимость и deployment admission остаются unverified; ничего не устанавливалось.
 
 PyYAML SafeLoader сам по себе не является всей validation: SHINRA обязана отдельно запрещать duplicate keys, aliases/merge keys, multiple documents и неизвестные fields, а также исключать YAML implicit typing из скрытого изменения config semantics. Никаких unsafe constructors.
 
@@ -30,8 +30,8 @@ FlashAttention, Triton, DeepGEMM, Transformer Engine, TensorRT не принят
 
 ## UNKNOWN / BLOCKED
 
-Точные GM Python/PyTorch/CUDA versions, ABI и collective support UNKNOWN. Исходник attention содержит native torch_blockwise_exact, выбор backend в YAML оставлен явным null. Формат checkpoint Safetensors утверждён; storage/recovery ещё не реализованы. Документальный API target 2.14 не означает требование переустановить GM. Реализация зависимых adapters BLOCKED до конкретного выбора; static metadata и native byte algorithms независимы от runtime GPU stack.
+Точные GM Python/PyTorch/CUDA versions, ABI и collective support UNKNOWN. Исходник attention содержит native torch_blockwise_exact, выбор backend в YAML оставлен явным null. Safetensors serialization/manifest/recovery source exists; storage durability and actual GM compatibility are not verified. Документальный API target 2.14 не означает требование переустановить GM. Dependency was pinned but not installed; execution remains prohibited.
 
 ## Static source evidence — 25.10.2026
 
-AST-разбор 16 Python-файлов без импорта модулей. Прямые внешние import roots: yaml и torch. Остальные roots — shinra и стандартная библиотека. Attention backend реализует blockwise online softmax и собственный backward; не является принятым GPU kernel backend и не имеет измерений скорости или runtime correctness. Higher-order gradients не поддерживаются.
+AST-разбор 25 Python-файлов без импорта модулей. Прямые внешние import roots: yaml, torch и safetensors. Остальные roots — shinra и стандартная библиотека. Attention backend реализует blockwise online softmax и собственный backward; не является принятым GPU kernel backend и не имеет измерений скорости или runtime correctness. Higher-order gradients не поддерживаются. Checkpoint serialization и recovery реализованы на source level; backend durability, реальная интеграция model/optimizer state и runtime correctness не проверены.

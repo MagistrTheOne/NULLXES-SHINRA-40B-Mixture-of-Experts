@@ -1,6 +1,6 @@
 # D08 — Project structure
 
-24.10.2026. VERIFIED: целевая структура V3.0. Фактически сейчас созданы только docs. Ни один показанный Python/YAML файл не объявляется существующим.
+25.10.2026. VERIFIED: целевая структура V3.0; фактический исходный набор частично реализован. Текущий inventory и blockers приведены в [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md) и [Engineering Order 005 audit](ENGINEERING_ORDER_005_AUDIT.md).
 
 ```text
 SHINRA-40B-MoE/
@@ -108,7 +108,10 @@ Cache protocol передаётся attention как объект явного �
 
 Подробный mapping всех модулей: [MODULE_CONTRACTS](MODULE_CONTRACTS.md). Будущие pyproject/requirements не дублируют списки зависимостей: один requirements — direct runtime requirements кроме GM; packaging build backend отдельно документируется D09. Не создавать файлов ради дерева, пустых implementation modules или дублирующих версий.
 
+## ACTUAL SOURCE STATUS
+
+Существуют `core`, `model` и `moe` модули, перечисленные в фактическом inventory. `tokenizer`, `data`, `training`, `distributed`, `checkpoint` и `inference` остаются целевыми, но отсутствуют в `src`. Статический import graph существующих Python-модулей рассмотрен в Engineering Order 005 audit; отсутствие циклов по AST не подтверждает runtime compatibility.
+
 ## UNKNOWN / BLOCKED
 
 Фактический import graph отсутствует до исходников. Проверено направление проектных dependencies, но не отсутствие циклов в ещё не написанном коде. Backend build/packaging choices не утверждены. Реализация ожидает отдельного подтверждения V3.0 §19.
-

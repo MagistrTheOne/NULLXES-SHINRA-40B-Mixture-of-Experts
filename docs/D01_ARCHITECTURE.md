@@ -29,7 +29,7 @@ W_out[131072,2560] не связан с E. RMSNorm(x)=gamma*x/sqrt(mean(x²)+1e-
 
 ## Configuration contract — PROPOSED
 
-Единственный будущий YAML: configs/shinra_40b_moe.yaml. Schema version — явное поле; версия 1 предложена. Обязательные top-level sections: schema_version, model, attention, rope, moe, router, tokenizer, data, training, distributed, checkpoint, inference. Только model хранит фундаментальные размерности; остальные sections ссылаются на них, не дублируют численные источники истины.
+Единственный канонический YAML: configs/shinra_40b_moe.yaml. Schema version — явное поле; версия 1 предложена. Обязательные top-level sections: schema_version, model, attention, rope, moe, router, tokenizer, data, training, distributed, checkpoint, inference. Только model хранит фундаментальные размерности; остальные sections ссылаются на них, не дублируют численные источники истины. Фактический parser и его ограничения описаны в исходниках и Engineering Order 005 audit; этот контракт сам по себе не подтверждает runtime поведение.
 
 | Section | Ответственность |
 |---|---|

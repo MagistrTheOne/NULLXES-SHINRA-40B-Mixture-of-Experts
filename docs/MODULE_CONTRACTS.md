@@ -1,59 +1,45 @@
-# Module contracts
+# Module contracts and implementation status
 
-24.10.2026. PROPOSED interfaces будущих модулей, не реализованные APIs. Формы и инварианты D01–D07 обязательны для зависимой реализации после approval.
+25.10.2026. Inventory reflects current source after Engineering Order 005 static audit. A listed contract is not evidence of runtime correctness.
 
-| Module under src/shinra | Input → output; responsibility |
-|---|---|
-| core/configuration.py | Единственный YAML → typed immutable config; duplicate/unknown key rejection |
-| core/validation.py | Config + operation → findings или validated plan; без mutation/defaults |
-| core/initialization.py | Explicit random recipe + logical tensors → initialized tensors; без foreign weights |
-| model/embeddings.py | IDs → hidden; range checks, untied input weights |
-| model/normalization.py | Hidden или per-head Q/K → RMS-normalized; FP32 stats |
-| model/rope.py | Normalized Q/K + positions → rotated Q/K; identity/version |
-| model/attention.py | Hidden + boundaries/positions/cache protocol → hidden; exact GQA contract |
-| model/decoder.py | Hidden → attention residual → MoE residual; no Dense branch |
-| model/modeling.py | IDs + explicit state → 48-block output; assembly без I/O |
-| model/lm_head.py | Hidden → full-vocabulary logits либо эквивалентные chunks |
-| moe/router.py | Hidden + frozen b → selected IDs/weights; no state mutation |
-| moe/experts.py | Expert inputs + expert ID → SwiGLU outputs width 800 |
-| moe/dispatch.py | Routing plan → stable assignments; chunking dropless |
-| moe/combine.py | Assignment outputs → original token order, FP32 sum |
-| moe/balancing.py | Unique counts + commit token → bounded b update |
-| moe/layer.py | Hidden + explicit routing context → combined MoE output |
-| tokenizer/byte_bpe.py | Bytes/text → deterministic IDs; no pretrained assets |
-| tokenizer/vocabulary.py | Vocabulary mapping → validated byte/special/learned IDs |
-| tokenizer/merges.py | Ordered pair rules → validated rank index; native trainer algorithm if authorized |
-| tokenizer/special_tokens.py | Typed structural messages → trusted special IDs |
-| tokenizer/serialization.py | Tokenizer records ↔ versioned manifest/bytes; identity checks |
-| tokenizer/streaming.py | Complete content fragments → exact encoding; byte output → incremental strict UTF-8 |
-| data/registry.py | Source/license approval → immutable source registry |
-| data/provenance.py | Raw/transformed identities → provenance records |
-| data/ingestion.py | Approved manifest → documents or explicit rejections |
-| data/deduplication.py | Document/index → retained/duplicate with provenance |
-| data/language.py | Supplied language evidence → metadata; no invented classifier |
-| data/packing.py | Segments → PackedBatch with positions/masks/token_uids |
-| data/streaming.py | Manifest/cursor → ordered records + pending cursor |
-| training/objective.py | Full vocabulary logits/targets/mask → loss sum and count |
-| training/optimizer.py | Explicit algorithm/hyperparameters/params → optimizer integration |
-| training/scheduler.py | Explicit schedule + committed progress → LR/state |
-| training/precision.py | Validated dtype policy → scoped precision, preserving router FP32 |
-| training/engine.py | Approved plan/model/data/state/adapters → transactional training orchestration |
-| training/state.py | Attempt events → committed/pending state transitions |
-| training/telemetry.py | Actual observations → versioned events, no fabricated metrics |
-| distributed/ownership.py | Explicit mapping → logical expert/parameter ownership |
-| distributed/parallelism.py | Logical partition/group specs → validated execution plan |
-| distributed/expert_parallel.py | Assignments + groups → real exchange and backward reverse exchange |
-| distributed/context_parallel.py | Sequence shards + boundaries → exact distributed attention contract |
-| distributed/communication.py | Explicit collective specs → actual backend operations/failures |
-| checkpoint/manifest.py | State inventory → versioned manifest/identity |
-| checkpoint/serialization.py | Supported tensors/metadata ↔ selected payload format |
-| checkpoint/transactions.py | Shards/acks → manifest/COMMITTED publication last |
-| checkpoint/recovery.py | Committed manifest + identities → validated complete restored state |
-| inference/generation.py | Request + loaded identity → autoregressive token events/stopping reason |
-| inference/sampling.py | Logits + explicit policy/RNG → next token |
-| inference/kv_cache.py | Layer K/V appends → transactional cache state |
-| inference/decoding.py | Token events → bytes/structured text with strict UTF-8 |
+## Existing source
 
-Package __init__.py files только определяют package surface/version без запуска операций. Public interfaces принимают validated configs; mutation разрешена только объявленным владельцам state. Ошибки typed: configuration, identity mismatch, unsupported backend, nonfinite computation, data approval, transaction failure. Нельзя ловить исключение и возвращать фиктивный результат.
+| Module | Responsibility | Status |
+|---|---|---|
+| `core/configuration.py` | Canonical YAML decoding, immutable config values and identities | Implemented; static review only |
+| `core/validation.py` | Closed schema, fixed architecture and operation prerequisites | Implemented; static review only |
+| `core/initialization.py` | Explicit recipe, logical parameter inventory and parameter allocation | Implemented; BF16 sampling precision corrected; never executed |
+| `model/embeddings.py` | Input token embeddings | Implemented |
+| `model/normalization.py` | RMSNorm and independent per-head Q/K RMSNorm | Implemented |
+| `model/rope.py` | Fixed adjacent-pair RoPE | Implemented; operation requires explicit approval and theta |
+| `model/attention.py` | GQA, document-aware causal mask, blockwise attention and explicit backward | Implemented; backend/chunk settings and runtime correctness unverified |
+| `model/decoder.py` | Pre-norm attention and routed-MoE residual block | Implemented |
+| `model/modeling.py` | 48-block model assembly and full-sequence forward surface | Implemented; not initialized or executed |
+| `model/lm_head.py` | Untied full-vocabulary output projection | Implemented |
+| `moe/router.py` | FP32 router, Top-8 selection, selected-logit softmax | Implemented |
+| `moe/experts.py` | SwiGLU expert computation with explicit chunking | Implemented |
+| `moe/dispatch.py` | Stable local assignment ordering | Implemented; distributed transport absent |
+| `moe/combine.py` | FP32 weighted combine in original token order | Implemented |
+| `moe/balancing.py` | Load accounting and prepared/committed bias state | Implemented primitive; requires an explicit initial bias; distributed synchronization/optimizer orchestration external |
+| `moe/layer.py` | Local router/dispatch/expert/combine assembly | Implemented; no distributed expert execution |
+| `checkpoint/manifest.py` | Versioned strict JSON checkpoint metadata and tensor inventory records | Implemented; static source only |
+| `checkpoint/serialization.py` | Safetensors shard I/O, expected inventory checks and stable-name optimizer snapshots | Implemented; runtime dependency not installed |
+| `checkpoint/transactions.py` | Staged complete-state writes, hashes and explicit atomic-publication capability | Implemented; storage durability not claimed |
+| `checkpoint/recovery.py` | Full group load, exact identity/inventory validation and strict module restoration | Implemented; no runtime restore performed |
+| package `__init__.py` files | Package markers | Present; no eager model construction |
 
-UNKNOWN: конкретные class/function names и библиотечные adapters до реализации. BLOCKED: backend-dependent APIs без выбранного и проверенного стека. Ни этот список, ни static review не подтверждают runtime correctness.
+## Contracted but absent source
+
+| Package | Required modules | Status |
+|---|---|---|
+| `tokenizer/` | byte BPE, vocabulary, merges, special tokens, serialization, streaming | Not implemented |
+| `data/` | registry, provenance, ingestion, deduplication, language, packing, streaming | Not implemented |
+| `training/` | objective, optimizer, scheduler, precision, engine, state, telemetry | Not implemented |
+| `distributed/` | ownership, parallelism, expert/context parallelism, communication | Not implemented |
+| `inference/` | generation, sampling, KV cache, decoding | Not implemented |
+
+## Required invariants
+
+Only the single `configs/shinra_40b_moe.yaml` is canonical. Unknown fields and missing schema fields must fail validation; null is UNKNOWN and cannot be converted into an execution default. Source modules must preserve the fixed 48-layer MoE architecture and must not introduce Dense fallback, stubs, mocks, or synthetic execution paths.
+
+All checkpoint tensor payloads must use the official Safetensors format. Metadata may use declarative UTF-8 JSON; no pickle or custom tensor/binary checkpoint format is permitted. Checkpoint source exists, but training-state producers, approved storage backend, durability, GM compatibility and runtime recovery remain BLOCKED/unverified.

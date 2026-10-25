@@ -109,10 +109,12 @@ def initialize_parameter(spec: ParameterSpec, recipe: InitializationRecipe, *, d
     target = torch.device(device)
     generator = torch.Generator(device=target)
     generator.manual_seed(recipe.tensor_seed(spec.name))
-    value = torch.empty(spec.shape, device=target, dtype=dtypes[spec.dtype])
     with torch.no_grad():
         if spec.role == "norm":
+            value = torch.empty(spec.shape, device=target, dtype=dtypes[spec.dtype])
             value.fill_(1.0)
         else:
-            value.normal_(mean=0.0, std=recipe.scale_for(spec), generator=generator)
+            sample = torch.empty(spec.shape, device=target, dtype=torch.float32)
+            sample.normal_(mean=0.0, std=recipe.scale_for(spec), generator=generator)
+            value = sample.to(dtype=dtypes[spec.dtype])
     return torch.nn.Parameter(value)

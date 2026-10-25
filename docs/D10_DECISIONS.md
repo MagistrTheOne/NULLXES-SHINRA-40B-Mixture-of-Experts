@@ -22,7 +22,8 @@
 | P08 | Training/checkpoint/distributed contracts D07 | PROPOSED | Не обещать готовые collectives/recovery |
 | P09 | Schema v1 и config identity D01 | PROPOSED | No hidden defaults |
 | P10 | PyYAML 6.0.3 | Выбран для parser при Order 004; release/license documented | requirements.txt, без установки |
-| U01 | Initialization distribution/scale, RNG algorithm | UNKNOWN | Initialization BLOCKED |
+| P11 | Normal(0, 1/sqrt(2560)); residual projections scaled by 1/sqrt(2*48); FP32 sampling then storage cast; logical-name SHA-256 seed derivation | PROPOSED: Engineering Order 005 | Candidate only; not an approved config default or evidence of runtime reproducibility |
+| U01 | Initialization approval and cross-device RNG guarantees | UNKNOWN | Initialization BLOCKED until explicit recipe fields are approved; bitwise cross-device identity is not claimed |
 | U02 | Optimizer, LR/betas/epsilon, batch, clipping, scheduler/token budget | UNKNOWN | Training BLOCKED, без придуманных чисел |
 | U03 | Corpus/manifests/tokenizer artifacts | UNKNOWN / NOT APPROVED | Ingestion/pretraining BLOCKED |
 | U04 | Runtime GM versions, backend и logical topology | UNKNOWN | Зависимые adapters BLOCKED; GPU planning вне scope |

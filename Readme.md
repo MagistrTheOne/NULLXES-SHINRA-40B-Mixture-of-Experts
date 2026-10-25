@@ -387,7 +387,8 @@ Documentation distinguishes accepted requirements, calculated properties and pro
 | MoE routing contract | Documented |
 | Long-context attention contract | Documented |
 | Native tokenizer contract | Documented |
-| Source implementation | In development / not verified |
+| Source implementation | In development / static review only; model/checkpoint not runtime verified |
+| Safetensors checkpoint source | Implemented; backend durability and training resume integration unverified |
 | Tokenizer training | Not reported |
 | Model pretraining | Not reported |
 | Model evaluation | Not reported |
