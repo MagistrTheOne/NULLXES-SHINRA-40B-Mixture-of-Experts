@@ -48,7 +48,7 @@ SCHEMA = {
     "attention": {"type": exact("gqa"), "qk_norm": exact("per_head_rms"),
                   "qk_norm_order": exact("before_rope"), "scale": exact("inverse_sqrt_head_dim"),
                   "causal": exact(True), "document_aware": exact(True),
-                  "sliding_window": Field("null"), "backend": TEXT,
+                  "sliding_window": Field("bool", nullable=True, choices=(False,)), "backend": TEXT,
                   "dropout": Field("number", True, minimum=0, maximum=1),
                   "query_chunk_tokens": COUNT, "key_chunk_tokens": COUNT},
     "rope": {"approval_reference": TEXT, "theta": POSITIVE, "pairing": exact("adjacent"),
@@ -205,7 +205,8 @@ def load_configuration(path: str | Path) -> Configuration:
 def operation_blockers(config: Configuration, operation: str) -> tuple[str, ...]:
     """Configuration prerequisites only: this is not execution authorization."""
     validate_architecture(config)
-    model = ("rope.approval_reference", "rope.theta", "attention.backend", "attention.dropout",
+    model = ("rope.approval_reference", "rope.theta", "attention.sliding_window",
+             "attention.backend", "attention.dropout",
              "attention.query_chunk_tokens", "attention.key_chunk_tokens", "moe.chunk_tokens")
     tokenizer = tuple("tokenizer." + name for name in (
         "approval_reference", "special_token_ids", "byte_start_id", "learned_start_id",
