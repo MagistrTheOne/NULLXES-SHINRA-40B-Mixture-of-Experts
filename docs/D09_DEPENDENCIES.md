@@ -1,13 +1,14 @@
 # D09 — Dependency register
 
-Проверка первичных источников: 24.10.2026. Исходников ещё нет, поэтому фактический import graph отсутствует. Ни один пакет не установлен и requirements.txt не создан. Ниже проектные потребности, а не утверждение совместимости GM.
+Обновлено 25.10.2026. Исходники используют yaml, torch и stdlib. requirements.txt содержит PyYAML==6.0.3; torch предоставляется GM. Установки и импорты SHINRA не выполнялись. Совместимость GM не подтверждена.
 
 | Component | Version evidence | License/source | Admission |
 |---|---|---|---|
 | PyTorch, managed by GM | Документация 2.14 просмотрена; фактическая версия GM и минимальная поддерживаемая версия SHINRA UNKNOWN | [Official LICENSE](https://github.com/pytorch/pytorch/blob/main/LICENSE), BSD-style terms и third-party notices | Базовая потребность V3.0; compatibility UNKNOWN; не добавлять torch в requirements |
-| PyYAML | 6.0.3 опубликован, Python >=3.8 по metadata | [Official project release](https://pypi.org/project/PyYAML/6.0.3/), MIT | PROPOSED прямой parser dependency, не установлен/не принят автоматически |
+| PyYAML | 6.0.3 опубликован, Python >=3.8 по metadata | [Official project release](https://pypi.org/project/PyYAML/6.0.3/), MIT | Прямой parser dependency, выбран в исходниках; не установлен |
 | Python stdlib | Версия GM UNKNOWN | Поставляется с интерпретатором | json/hashlib/pathlib/dataclasses/enum/typing/codecs и др. не помещаются в requirements |
-| Packaging backend | UNKNOWN | Не выбран | BLOCKED выбор build-system до реализации; не выдумывать pin |
+| setuptools | 84.2.0, Python >=3.10 | [Release](https://pypi.org/project/setuptools/84.2.0/), MIT | Build backend в pyproject.toml; build не запускался |
+| Safetensors | Версия для Python adapter ещё не зафиксирована | [Official tensor API](https://huggingface.co/docs/safetensors/api/torch) | Формат утверждён пользователем 25.10.2026; adapter не реализован, dependency пока не добавлена |
 | CUDA/NCCL/drivers | Версии GM UNKNOWN | Управляются GM отдельно | Не добавлять системные компоненты в requirements |
 
 ## VERIFIED — API evidence, не runtime admission
@@ -19,7 +20,7 @@
 
 ## PROPOSED import graph
 
-core parser → yaml + stdlib; tokenizer/data metadata → stdlib; model/moe/training tensor operations → torch; distributed → torch.distributed; checkpoint payload adapter UNKNOWN. Actual imports нужно сверить по каждому исходному файлу, когда он появится. До этого нельзя утверждать окончательный requirements.
+core parser → yaml + stdlib; tokenizer/data metadata → stdlib; model/moe/training tensor operations → torch; distributed → torch.distributed; checkpoint tensor format Safetensors (adapter ещё отсутствует). Actual imports нужно сверить по каждому исходному файлу, когда он появится. До этого нельзя утверждать окончательный requirements.
 
 PyYAML SafeLoader сам по себе не является всей validation: SHINRA обязана отдельно запрещать duplicate keys, aliases/merge keys, multiple documents и неизвестные fields, а также исключать YAML implicit typing из скрытого изменения config semantics. Никаких unsafe constructors.
 
@@ -29,4 +30,8 @@ FlashAttention, Triton, DeepGEMM, Transformer Engine, TensorRT не принят
 
 ## UNKNOWN / BLOCKED
 
-Точные GM Python/PyTorch/CUDA versions, ABI, выбранный attention backend, collective support и checkpoint payload format UNKNOWN. Документальный API target 2.14 не означает требование переустановить GM. Реализация зависимых adapters BLOCKED до конкретного выбора; static metadata и native byte algorithms независимы от runtime GPU stack.
+Точные GM Python/PyTorch/CUDA versions, ABI и collective support UNKNOWN. Исходник attention содержит native torch_blockwise_exact, выбор backend в YAML оставлен явным null. Формат checkpoint Safetensors утверждён; storage/recovery ещё не реализованы. Документальный API target 2.14 не означает требование переустановить GM. Реализация зависимых adapters BLOCKED до конкретного выбора; static metadata и native byte algorithms независимы от runtime GPU stack.
+
+## Static source evidence — 25.10.2026
+
+AST-разбор 16 Python-файлов без импорта модулей. Прямые внешние import roots: yaml и torch. Остальные roots — shinra и стандартная библиотека. Attention backend реализует blockwise online softmax и собственный backward; не является принятым GPU kernel backend и не имеет измерений скорости или runtime correctness. Higher-order gradients не поддерживаются.

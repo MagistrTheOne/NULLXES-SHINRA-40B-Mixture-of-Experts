@@ -10,7 +10,8 @@
 | A04 | FP32 router weights/logits, no trainable bias, stable ID ties, dropless | VERIFIED: V3.0 | Нет hidden fallback |
 | A05 | Единственный будущий configs/shinra_40b_moe.yaml | VERIFIED: V3.0 | Никаких других YAML |
 | A06 | GM управляет базовым stack; без установок и torch в requirements | VERIFIED: V3.0 | Actual GM versions UNKNOWN |
-| A07 | Сначала документация, потом отдельное подтверждение реализации | VERIFIED: V3.0 §19 | Исходники сейчас не создаются |
+| A07 | Source implementation разрешена | VERIFIED: Order 004 | Повторный GO по модулям не требуется; execution запрещён |
+| A08 | Все checkpoint tensor payloads — Safetensors | VERIFIED: прямой приказ 25.10.2026 | Metadata JSON; никаких .pt/.pth/pickle или собственного tensor format |
 | P01 | Balancing eta=0.001, bound=2, bounded sign update | PROPOSED: D03 | Не production defaults; training требует approval |
 | P02 | RoPE theta=1000000, adjacent pairing, identity scaling, FP64 phases | PROPOSED: D04 | Численная frequency policy ещё не явно утверждена |
 | P03 | Attention dropout=0; BF16 cache | PROPOSED: D04 | Не подставлять неявно |
@@ -20,17 +21,17 @@
 | P07 | Data schemas/exact dedup, language evidence, cursor | PROPOSED: D06 | Corpus approval отдельно |
 | P08 | Training/checkpoint/distributed contracts D07 | PROPOSED | Не обещать готовые collectives/recovery |
 | P09 | Schema v1 и config identity D01 | PROPOSED | No hidden defaults |
-| P10 | PyYAML 6.0.3 | PROPOSED, release/license documented | Требуется принятие direct dependency |
+| P10 | PyYAML 6.0.3 | Выбран для parser при Order 004; release/license documented | requirements.txt, без установки |
 | U01 | Initialization distribution/scale, RNG algorithm | UNKNOWN | Initialization BLOCKED |
 | U02 | Optimizer, LR/betas/epsilon, batch, clipping, scheduler/token budget | UNKNOWN | Training BLOCKED, без придуманных чисел |
 | U03 | Corpus/manifests/tokenizer artifacts | UNKNOWN / NOT APPROVED | Ingestion/pretraining BLOCKED |
 | U04 | Runtime GM versions, backend и logical topology | UNKNOWN | Зависимые adapters BLOCKED; GPU planning вне scope |
-| U05 | Checkpoint payload/storage durability/resharding | UNKNOWN | Нельзя заявлять сохранение/recovery |
+| U05 | Storage durability/resharding | UNKNOWN | Формат Safetensors утверждён; сохранение/recovery ещё не реализованы |
 | U06 | Chat header grammar, FIM sampling/loss policy | UNKNOWN | Соответствующая сериализация/обучение требуют решения |
 
 ## Сверка неоднозначностей
 
-V3.0 называется SOURCE IMPLEMENTATION, но §19 прямо требует отдельное подтверждение после сверки docs. Сейчас выполняется документационная часть, не stages исходников.
+Order 004 предоставил требуемое разрешение: исходная реализация ведётся. Запрет исполнения сохраняется.
 
 Фраза «сохранить утверждённый контракт RoPE» не содержит явного принятия численного theta из ранее PROPOSED D04. Theta не изменяется, но и не переименовывается в approved. Аналогично сохранение D05 не доказывает approval предложенных ID. Это не конфликт двух утверждённых чисел, а отсутствующее решение.
 

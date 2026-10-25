@@ -49,7 +49,8 @@ SCHEMA = {
                   "qk_norm_order": exact("before_rope"), "scale": exact("inverse_sqrt_head_dim"),
                   "causal": exact(True), "document_aware": exact(True),
                   "sliding_window": Field("null"), "backend": TEXT,
-                  "dropout": Field("number", True, minimum=0, maximum=1)},
+                  "dropout": Field("number", True, minimum=0, maximum=1),
+                  "query_chunk_tokens": COUNT, "key_chunk_tokens": COUNT},
     "rope": {"approval_reference": TEXT, "theta": POSITIVE, "pairing": exact("adjacent"),
              "scaling": exact("identity"), "phase_dtype": exact("float64")},
     "moe": {"dispatch": exact("stable"), "combine_dtype": exact("float32"),
@@ -73,7 +74,7 @@ SCHEMA = {
                  "accumulation_steps": COUNT, "max_grad_norm": POSITIVE, "token_budget": COUNT,
                  "recomputation": Field("bool", True)},
     "distributed": {"backend": TEXT, "ownership_manifest": TEXT, "timeout_seconds": POSITIVE},
-    "checkpoint": {"format": exact("shinra.checkpoint.v1"), "storage_backend": TEXT,
+    "checkpoint": {"format": exact("safetensors"), "storage_backend": TEXT,
                    "directory": TEXT, "resume_manifest": TEXT},
     "inference": {"checkpoint_manifest": TEXT, "sampling": Field("str", True, ("greedy", "categorical")),
                   "temperature": POSITIVE, "top_k": NONNEGATIVE,
@@ -204,7 +205,8 @@ def load_configuration(path: str | Path) -> Configuration:
 def operation_blockers(config: Configuration, operation: str) -> tuple[str, ...]:
     """Configuration prerequisites only: this is not execution authorization."""
     validate_architecture(config)
-    model = ("rope.approval_reference", "rope.theta", "attention.backend", "attention.dropout", "moe.chunk_tokens")
+    model = ("rope.approval_reference", "rope.theta", "attention.backend", "attention.dropout",
+             "attention.query_chunk_tokens", "attention.key_chunk_tokens", "moe.chunk_tokens")
     tokenizer = tuple("tokenizer." + name for name in (
         "approval_reference", "special_token_ids", "byte_start_id", "learned_start_id",
         "max_token_bytes", "min_pair_frequency"))

@@ -47,11 +47,11 @@ Logical topology предоставляется извне. Process groups, rank
 
 Failure coordination не гарантируется живым collective после потери rank. External launcher/supervisor должен завершить повреждённую group и организовать restart из durable state. Конкретный launcher UNKNOWN. Незавершённый distributed backend блокируется, а не симулируется.
 
-## Checkpoint format — PROPOSED shinra.checkpoint.v1
+## Checkpoint format — Safetensors (распоряжение NULLXES 25.10.2026)
 
 Manifest содержит schema/version, transaction ID, successful step, config identities, tokenizer/dataset identities, tensor shard names/shapes/dtypes/offsets/hashes, optimizer/scheduler states, router buffers, committed cursor, per-logical-worker RNG, ownership map, precision policy и source revision.
 
-Tensor payload adapter не выбран; нельзя писать неподтверждённый library format. Metadata предлагается UTF-8 canonical JSON. Целостность: SHA-256 каждого shard и manifest. Arbitrary executable objects не входят в schema.
+Формат всех сохраняемых tensors — Safetensors: model weights, tensor optimizer state, router buffers и tensor RNG state. Никаких альтернативных .pt/.pth/pickle весов или самодельного tensor container. Прежнее shinra.checkpoint.v1 больше не используется как значение format. Служебный manifest содержит JSON metadata, ссылки на .safetensors shards и hashes; это не альтернативный формат весов. Scalars/структура optimizer/scheduler/cursor сериализуются как данные, не executable objects. Целостность: SHA-256 каждого shard и manifest. Фактические файлы checkpoint создавать сейчас запрещено.
 
 Publication: выбрать уникальный transaction ID → snapshot committed boundary → записать все shards во временное transaction namespace → flush/durability по backend contract → собрать acknowledgements и hashes → manifest → publish COMMITTED marker последним. Reader принимает только полную committed transaction с проверенными identities/hashes. LATEST — подсказка, не доказательство целостности.
 

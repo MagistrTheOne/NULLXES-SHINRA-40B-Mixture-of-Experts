@@ -36,6 +36,8 @@ attention:
   sliding_window: null
   backend: null
   dropout: null
+  query_chunk_tokens: null
+  key_chunk_tokens: null
 rope:
   approval_reference: null
   theta: null
@@ -94,7 +96,7 @@ distributed:
   ownership_manifest: null
   timeout_seconds: null
 checkpoint:
-  format: shinra.checkpoint.v1
+  format: safetensors
   storage_backend: null
   directory: null
   resume_manifest: null
