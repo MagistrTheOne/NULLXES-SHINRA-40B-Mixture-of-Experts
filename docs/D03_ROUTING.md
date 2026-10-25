@@ -153,4 +153,4 @@ CALCULATED: 48×128=6144 non-trainable balancing values, исключены из
 
 ## UNKNOWN / BLOCKED
 
-UNKNOWN: оптимальность коэффициентов, реальная нагрузка, устойчивость обучения, окончательная initialization policy. BLOCKED: реализация и runtime до нового разрешения. D03 подготовлен как проектный контракт. NOT EXECUTED: модель, тесты, обучение, inference.
+UNKNOWN: оптимальность коэффициентов, реальная нагрузка, устойчивость обучения, окончательная initialization policy. Исходная реализация разрешена Order 004, local MoE primitives существуют. BLOCKED: runtime и интеграция с отсутствующим training/distributed engine. NOT EXECUTED: модель, тесты, обучение, inference.

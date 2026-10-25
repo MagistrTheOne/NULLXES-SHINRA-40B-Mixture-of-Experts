@@ -30,3 +30,7 @@ Safetensors serialization, tokenizer, data, training orchestration, distributed,
 Создан `src/shinra/checkpoint/` с manifest, Safetensors serialization, staged transactions и strict recovery. В `requirements.txt` добавлена прямая pin-зависимость `safetensors==0.6.2`; её не устанавливали. Release metadata требует Python >=3.9; Torch extra указывает torch>=1.10, но текущая GM совместимость неизвестна.
 
 Checkpoint API поддерживает exact tensor inventories, model/optimizer/router/RNG группы, именованные optimizer state tensors, JSON metadata, model shard индексы, SHA-256, проверку complete publication и явное требование подтверждённой atomic-replace capability. Durability не обещается. Training resume остаётся BLOCKED до реальных state producers, backend approval и согласования scheduler/cursor/tokenizer/corpus identities. Никаких checkpoint-файлов не создавали.
+
+## 25.10.2026 — remediation of 3e582820 checkpoint defects
+
+Corrected P1-01 payload total_size, P1-02 optimizer device_policy schema and P1-03 typed inventory conversion in canonical checkpoint sources. Removed unsupported FNUZ dtype admission for pinned Safetensors 0.6.2; no conversion/fallback introduced. Synchronized stale current documentation; retained historical entries. Added independent initialization proposal and current full static audit with inventory. Model dimensions, YAML and dependencies unchanged. No execution, tests, checkpoint artifacts, installations, downloads, commit or push. Publication/resume remain NO-GO.

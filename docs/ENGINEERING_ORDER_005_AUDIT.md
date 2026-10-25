@@ -1,5 +1,7 @@
 # Engineering Order 005 — Static Source Audit
 
+Historical snapshot and Stage A appendix. Current inventory/findings supersede this snapshot: [25.10.2026 re-audit](AUDIT_REMEDIATION_2026-10-25.md).
+
 25.10.2026. Independent static source review and narrowly scoped remediation. This report does not certify runtime behavior.
 
 ## AUDIT SUMMARY

@@ -40,3 +40,5 @@ SHINRA — самостоятельная decoder-only causal LLM с MoE в ка
 COMPLETED: подготовлен комплект D01–D10 с MODULE_CONTRACTS, IMPLEMENTATION_STATUS и ARCHITECTURE_CHANGELOG. FILES CHANGED: docs, src, единый YAML и packaging metadata; полный перечень в IMPLEMENTATION_STATUS.md. NOT EXECUTED: модель, tokenizer training, тесты, установки, скачивания и удалённые вычисления. Нет заявлений о работоспособности, производительности, качестве модели или освоенном 256K-контексте.
 
 Order 004 разрешает исходную реализацию. Неутверждённые численные настройки остаются null. Поправка 25.10.2026: checkpoint tensors только Safetensors; metadata отдельно в JSON.
+
+Current source review: [25.10.2026 remediation](AUDIT_REMEDIATION_2026-10-25.md). Separate [initialization proposal](INITIALIZATION_RECIPE.md). Publication/training resume remain NO-GO; source fixes are not runtime verification.

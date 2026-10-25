@@ -35,3 +35,7 @@ FlashAttention, Triton, DeepGEMM, Transformer Engine, TensorRT не принят
 ## Static source evidence — 25.10.2026
 
 AST-разбор 25 Python-файлов без импорта модулей. Прямые внешние import roots: yaml, torch и safetensors. Остальные roots — shinra и стандартная библиотека. Attention backend реализует blockwise online softmax и собственный backward; не является принятым GPU kernel backend и не имеет измерений скорости или runtime correctness. Higher-order gradients не поддерживаются. Checkpoint serialization и recovery реализованы на source level; backend durability, реальная интеграция model/optimizer state и runtime correctness не проверены.
+
+## Dtype admission correction — 25.10.2026
+
+The pinned [v0.6.2 Torch adapter](https://github.com/huggingface/safetensors/blob/v0.6.2/bindings/python/py_src/safetensors/torch.py) lists float8_e4m3fn and float8_e5m2 but not FNUZ variants. SHINRA now rejects F8_E4M3FNUZ/F8_E5M2FNUZ at inventory/manifest admission, without casting. This does not enable FP8 model execution. Requirements unchanged; no package installed. Actual GM compatibility remains UNKNOWN.

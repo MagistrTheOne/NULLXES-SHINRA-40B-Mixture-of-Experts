@@ -72,7 +72,7 @@ def _read_json(path: Path) -> Any:
         raise CheckpointError(f"invalid checkpoint JSON {path}: {exc}") from exc
 
 
-def _validate_training_metadata(purpose: str, groups: Mapping[str, Any], metadata: Mapping[str, Any],
+def _validate_training_metadata(purpose: str, groups: Mapping[str, frozenset[str]], metadata: Mapping[str, Any],
                                 required_groups: tuple[str, ...], successful_step: int) -> None:
     if purpose != "training_resume":
         return
@@ -114,8 +114,10 @@ def _validate_training_metadata(purpose: str, groups: Mapping[str, Any], metadat
         for state_name, entry in state.items():
             if not isinstance(state_name, str) or not state_name or not isinstance(entry, Mapping):
                 raise CheckpointError("optimizer state entry has an invalid schema")
-            if (entry.get("kind") == "tensor" and set(entry) == {"kind", "tensor_name"}
+            if (entry.get("kind") == "tensor" and set(entry) == {"kind", "tensor_name", "device_policy"}
                     and isinstance(entry["tensor_name"], str) and entry["tensor_name"]):
+                if entry["device_policy"] not in ("cpu", "parameter"):
+                    raise CheckpointError("optimizer device_policy must be cpu or parameter")
                 tensor_references.append(entry["tensor_name"])
             elif entry.get("kind") == "scalar" and set(entry) == {"kind", "value"}:
                 value = entry["value"]
@@ -176,8 +178,6 @@ def write_checkpoint(root: str | Path, *, transaction_id: str, purpose: str,
             or not set(required_groups).issubset(tensor_groups)
             or "model" not in required_groups):
         raise CheckpointError("required_groups must be an explicit nonempty tuple")
-    _validate_training_metadata(purpose, tensor_groups, metadata, required_groups, successful_step)
-
     for group_name, tensors in tensor_groups.items():
         if not isinstance(expected_inventories[group_name], Mapping):
             raise CheckpointError(f"{group_name}: expected explicit tensor inventory")
@@ -187,6 +187,9 @@ def write_checkpoint(root: str | Path, *, transaction_id: str, purpose: str,
         for name, spec in expected_inventories[group_name].items():
             if not isinstance(spec, TensorSpec) or actual[name] != spec:
                 raise CheckpointError(f"{group_name}.{name}: source tensor shape/dtype differs from inventory")
+
+    group_names = {name: frozenset(tensors.keys()) for name, tensors in tensor_groups.items()}
+    _validate_training_metadata(purpose, group_names, metadata, required_groups, successful_step)
 
     destination_root = Path(root)
     transaction_path = destination_root / transaction_id
@@ -228,7 +231,9 @@ def _verify_transaction(transaction_path: Path, *, require_commit: bool) -> Chec
     manifest_bytes = manifest_path.read_bytes()
     manifest = CheckpointManifest.from_dict(_read_json(manifest_path))
     _validate_training_metadata(
-        manifest.purpose, manifest.groups, manifest.metadata,
+        manifest.purpose,
+        {name: frozenset(record.name for record in group.records) for name, group in manifest.groups.items()},
+        manifest.metadata,
         manifest.required_groups, manifest.successful_step)
     if manifest.transaction_id != transaction_path.name:
         raise CheckpointError("manifest transaction identity does not match its directory")

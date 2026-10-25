@@ -27,7 +27,7 @@
 | U02 | Optimizer, LR/betas/epsilon, batch, clipping, scheduler/token budget | UNKNOWN | Training BLOCKED, без придуманных чисел |
 | U03 | Corpus/manifests/tokenizer artifacts | UNKNOWN / NOT APPROVED | Ingestion/pretraining BLOCKED |
 | U04 | Runtime GM versions, backend и logical topology | UNKNOWN | Зависимые adapters BLOCKED; GPU planning вне scope |
-| U05 | Storage durability/resharding | UNKNOWN | Формат Safetensors утверждён; сохранение/recovery ещё не реализованы |
+| U05 | Storage durability/resharding | UNKNOWN | Safetensors source существует; три P1 исправлены статически, runtime и durability не подтверждены |
 | U06 | Chat header grammar, FIM sampling/loss policy | UNKNOWN | Соответствующая сериализация/обучение требуют решения |
 
 ## Сверка неоднозначностей
@@ -45,3 +45,7 @@ D05 exact BPE требует границ content fragments. Data streaming не
 Документальный комплект представлен для подтверждения. Требуются решения P01–P10 и U01/U06 для соответствующих компонентов; U02–U05 могут оставаться явно UNKNOWN в config с operation gates. Неизвестный корпус не должен блокировать независимую реализацию конфигурации/математики после разрешения.
 
 Архитектурных размерностей не изменено. Ни одно PROPOSED решение не является результатом измерения.
+
+## Re-audit 25.10.2026
+
+[Current findings](AUDIT_REMEDIATION_2026-10-25.md), [initialization candidate](INITIALIZATION_RECIPE.md). Никакие numeric proposals не переведены в executable defaults. Publication/training resume NO-GO сохраняется.

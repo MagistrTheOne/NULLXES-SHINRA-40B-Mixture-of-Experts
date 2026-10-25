@@ -110,8 +110,8 @@ Cache protocol передаётся attention как объект явного �
 
 ## ACTUAL SOURCE STATUS
 
-Существуют `core`, `model` и `moe` модули, перечисленные в фактическом inventory. `tokenizer`, `data`, `training`, `distributed`, `checkpoint` и `inference` остаются целевыми, но отсутствуют в `src`. Статический import graph существующих Python-модулей рассмотрен в Engineering Order 005 audit; отсутствие циклов по AST не подтверждает runtime compatibility.
+Существуют `core`, `model` и `moe` модули, перечисленные в фактическом inventory. Пакет `checkpoint` существует: __init__.py, manifest.py, serialization.py, transactions.py, recovery.py. `tokenizer`, `data`, `training`, `distributed` и `inference` отсутствуют в `src`. Статический import graph существующих Python-модулей рассмотрен в Engineering Order 005 audit; отсутствие циклов по AST не подтверждает runtime compatibility.
 
 ## UNKNOWN / BLOCKED
 
-Фактический import graph отсутствует до исходников. Проверено направление проектных dependencies, но не отсутствие циклов в ещё не написанном коде. Backend build/packaging choices не утверждены. Реализация ожидает отдельного подтверждения V3.0 §19.
+Order 004 разрешил реализацию. Текущие 25 Python-модулей рассмотрены; AST import graph без обнаруженных циклов. Runtime compatibility, storage durability и отсутствующие системные компоненты остаются UNKNOWN/BLOCKED. См. [повторный аудит](AUDIT_REMEDIATION_2026-10-25.md).

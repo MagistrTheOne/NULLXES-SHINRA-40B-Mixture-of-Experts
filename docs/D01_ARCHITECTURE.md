@@ -67,4 +67,4 @@ Prefill/decode/cache следуют D04. Предлагаются greedy (tie п
 
 ## UNKNOWN / BLOCKED
 
-Initialization recipe, окончательное approval RoPE/specials, конкретный attention backend, trained artifacts и runtime UNKNOWN. 256K — target. Реализация ожидает подтверждения после документальной сверки согласно V3.0 §19.
+Initialization recipe, окончательное approval RoPE/specials, конкретный attention backend, trained artifacts и runtime UNKNOWN. 256K — target. Реализация разрешена Order 004; runtime не разрешён. Кандидат initialization и фактический inventory: [INITIALIZATION_RECIPE](INITIALIZATION_RECIPE.md).

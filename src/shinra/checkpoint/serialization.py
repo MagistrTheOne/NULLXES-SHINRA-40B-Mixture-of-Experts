@@ -16,10 +16,8 @@ from .manifest import CheckpointError, FileRecord, TensorGroup, TensorRecord
 _TORCH_TO_SAFE = {
     "bool": "BOOL", "uint8": "U8", "int8": "I8", "int16": "I16", "int32": "I32",
     "int64": "I64", "float16": "F16", "bfloat16": "BF16", "float32": "F32", "float64": "F64",
-    "float8_e4m3fn": "F8_E4M3", "float8_e4m3fnuz": "F8_E4M3FNUZ",
-    "float8_e5m2": "F8_E5M2", "float8_e5m2fnuz": "F8_E5M2FNUZ",
+    "float8_e4m3fn": "F8_E4M3", "float8_e5m2": "F8_E5M2",
 }
-_SAFE_TO_TORCH = {value: key for key, value in _TORCH_TO_SAFE.items()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +185,6 @@ def save_tensor_group(directory: str | Path, group_name: str, tensors: Mapping[s
     file_records: list[FileRecord] = []
     tensor_records: list[TensorRecord] = []
     weight_map: dict[str, str] = {}
-    total_bytes = 0
 
     for shard_number, names in enumerate(shard_batches, start=1):
         filename = f"{group_name}-{shard_number:05d}-of-{shard_total:05d}.safetensors"
@@ -202,7 +199,6 @@ def save_tensor_group(directory: str | Path, group_name: str, tensors: Mapping[s
             raise CheckpointError(f"Safetensors save failed for {destination}: {exc}") from exc
         size, digest = _sha256_file(destination)
         file_records.append(FileRecord(filename, size, digest))
-        total_bytes += size
         for name in names:
             spec = actual[name]
             tensor = tensors[name]
@@ -213,7 +209,7 @@ def save_tensor_group(directory: str | Path, group_name: str, tensors: Mapping[s
     index_filename = f"{group_name}.safetensors.index.json"
     index_path = target / index_filename
     index_record = _write_json_new(index_path, {
-        "metadata": {"total_size": total_bytes},
+        "metadata": {"total_size": sum(record.nbytes for record in tensor_records)},
         "weight_map": {name: weight_map[name] for name in sorted(weight_map)},
     })
     return TensorGroup(group_name, index_filename, tuple(tensor_records),

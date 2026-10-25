@@ -469,4 +469,7 @@ No trained model, evaluation suite or deployment is represented as available unl
 
 © 2026 NULLXES
 
-</div> 
+</div>
+### Static checkpoint remediation — 25 October 2026
+
+Three checkpoint write/verification defects were corrected in source; no save/load or model execution was performed. Publication and training resume remain NO-GO pending authorized runtime verification and storage/state integration. See [current audit](docs/AUDIT_REMEDIATION_2026-10-25.md) and [initialization candidate](docs/INITIALIZATION_RECIPE.md).

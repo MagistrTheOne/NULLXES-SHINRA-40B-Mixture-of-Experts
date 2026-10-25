@@ -43,3 +43,7 @@
 Only the single `configs/shinra_40b_moe.yaml` is canonical. Unknown fields and missing schema fields must fail validation; null is UNKNOWN and cannot be converted into an execution default. Source modules must preserve the fixed 48-layer MoE architecture and must not introduce Dense fallback, stubs, mocks, or synthetic execution paths.
 
 All checkpoint tensor payloads must use the official Safetensors format. Metadata may use declarative UTF-8 JSON; no pickle or custom tensor/binary checkpoint format is permitted. Checkpoint source exists, but training-state producers, approved storage backend, durability, GM compatibility and runtime recovery remain BLOCKED/unverified.
+
+## Corrected checkpoint contracts — 25.10.2026
+
+Index metadata.total_size = sum(TensorRecord.nbytes), excluding headers. FileRecord.size = physical file bytes. Transaction training validator receives Mapping[str, frozenset[str]] from raw tensor keys on write and TensorGroup.records on read. Tensor optimizer entries contain exactly kind/tensor_name/device_policy; placement is cpu or parameter. Unknown fields and unsupported dtype variants fail closed. No checkpoint execution verified; see [current audit](AUDIT_REMEDIATION_2026-10-25.md).

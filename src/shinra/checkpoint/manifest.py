@@ -17,11 +17,11 @@ _TRANSACTION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 _GROUP = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
 _DTYPES = frozenset(
     ("BOOL", "U8", "I8", "I16", "I32", "I64", "F16", "BF16", "F32", "F64",
-     "F8_E4M3", "F8_E5M2", "F8_E5M2FNUZ", "F8_E4M3FNUZ")
+     "F8_E4M3", "F8_E5M2")
 )
 _DTYPE_SIZES = {
     "BOOL": 1, "U8": 1, "I8": 1, "F8_E4M3": 1,
-    "F8_E5M2": 1, "F8_E5M2FNUZ": 1, "F8_E4M3FNUZ": 1,
+    "F8_E5M2": 1,
     "I16": 2, "F16": 2, "BF16": 2, "I32": 4, "F32": 4, "I64": 8, "F64": 8,
 }
 

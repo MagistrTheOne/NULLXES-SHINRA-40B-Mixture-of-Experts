@@ -36,3 +36,9 @@ See [Engineering Order 005 audit](./ENGINEERING_ORDER_005_AUDIT.md) for the init
 ## NOT EXECUTED
 
 No model/tokenizer initialization, forward/backward, training, inference, test creation or execution, dependency installation, downloads, deployment, or GPU planning. No runtime correctness or performance claim is made.
+
+## Current re-audit — 25.10.2026
+
+Base HEAD 3e5828200dac53b5ff22e31d9175c45e73c6ff8c. Three HIGH checkpoint defects corrected in source: payload byte totals, strict optimizer device_policy, typed name inventories for write/read. Unsupported FNUZ variants rejected for pinned Safetensors 0.6.2. AST review covers 25 modules; no model/checkpoint execution. **Publication / training resume: NO-GO remains.**
+
+Full findings, actual inventory, changed files and blockers: [AUDIT_REMEDIATION_2026-10-25](AUDIT_REMEDIATION_2026-10-25.md). Initialization candidate: [INITIALIZATION_RECIPE](INITIALIZATION_RECIPE.md). Tokenizer/data/training/distributed/inference source remains absent; no completion claimed.
