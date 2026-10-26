@@ -1,7 +1,27 @@
 """Real dropless EP dispatch and reverse exchange with autograd."""
 import torch
+from dataclasses import dataclass
 from .communication import Group, exchange, exchange_sizes
 from .ownership import ExpertOwnership
+
+
+@dataclass(frozen=True)
+class ExpertExecution:
+    ownership: ExpertOwnership
+    group: Group
+
+    def __post_init__(self):
+        if self.group.size < 2 or self.ownership.members != self.group.size:
+            raise ValueError("EP requires an explicit multi-member ownership group")
+
+    def local_experts(self, layer):
+        return self.ownership.local_experts(layer, self.group.rank)
+
+    def compute(self, assigned, routing, plan, token_uids, *, layer, experts, chunk_tokens):
+        expert_ids = routing.expert_ids.reshape(-1).index_select(0, plan.assignment_order)
+        return compute_experts(assigned, expert_ids, token_uids.index_select(0, plan.token_indices),
+                               layer=layer, experts=experts, ownership=self.ownership,
+                               group=self.group, chunk_tokens=chunk_tokens)
 
 
 def compute_experts(assigned: torch.Tensor, expert_ids: torch.Tensor, token_uids: torch.Tensor, *,
@@ -30,6 +50,9 @@ def compute_experts(assigned: torch.Tensor, expert_ids: torch.Tensor, token_uids
     uid_order = torch.argsort(metadata[:, 1], stable=True)
     expert_order = uid_order[torch.argsort(metadata[uid_order, 0], stable=True)]
     sorted_ids = metadata[expert_order, 0]
+    sorted_metadata = metadata[expert_order]
+    if sorted_metadata.shape[0] > 1 and bool((sorted_metadata[1:] == sorted_metadata[:-1]).all(dim=1).any()):
+        raise ValueError("duplicate global token/expert assignment; replicated inputs must not be counted twice")
     pieces, offset = [], 0
     for expert in sorted(expected, key=int):
         count = int((sorted_ids == int(expert)).sum().item())

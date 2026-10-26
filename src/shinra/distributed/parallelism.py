@@ -62,11 +62,12 @@ def partitioned_linear(value, weight, partition: TensorPartition, group: Group):
     return _Reduce.apply(F.linear(value, weight), group)
 
 
-def synchronize_gradients(parameters: dict, accumulated: dict, group: Group) -> dict:
+def synchronize_gradients(parameters: dict, accumulated: dict, group: Group, *, owned_names=frozenset()) -> dict:
     """Sum DP gradients in canonical name order; explicit zero for unused experts.
 
-    All participants must own the same full parameter inventory. This is DP, not
-    a fallback for TP/EP shards. Global token normalization happens afterwards.
+    Replicated parameters must have identical inventories across members. The
+    explicit owned_names inventory excludes owner-only EP parameters from SUM.
+    Global token normalization happens afterwards; TP shards are not admitted.
     """
     if not set(accumulated).issubset(parameters):
         raise ValueError("unknown accumulated gradient")
@@ -78,5 +79,7 @@ def synchronize_gradients(parameters: dict, accumulated: dict, group: Group) -> 
             value = torch.zeros_like(parameter, dtype=torch.float32)
         if value.shape != parameter.shape or value.dtype != torch.float32:
             raise ValueError("gradient partition/precision mismatch")
-        result[name] = group.sum(value)
+        # Owner-only experts already accumulated all input-source gradients via
+        # inverse EP communication; reducing them again would double-count.
+        result[name] = value if name in owned_names else group.sum(value)
     return result

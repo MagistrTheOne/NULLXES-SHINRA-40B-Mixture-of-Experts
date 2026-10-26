@@ -55,3 +55,7 @@ All checkpoint tensor payloads must use the official Safetensors format. Metadat
 ## Corrected checkpoint contracts — 25.10.2026
 
 Index metadata.total_size = sum(TensorRecord.nbytes), excluding headers. FileRecord.size = physical file bytes. Transaction training validator receives Mapping[str, frozenset[str]] from raw tensor keys on write and TensorGroup.records on read. Tensor optimizer entries contain exactly kind/tensor_name/device_policy; placement is cpu or parameter. Unknown fields and unsupported dtype variants fail closed. No checkpoint execution verified; see [current audit](AUDIT_REMEDIATION_2026-10-25.md).
+
+## Order 008 continuation — 26.10.2026
+
+ExpertExecution now connects ownership/transport to canonical MoELayer and TrainingEngine. ModuleDict preserves logical expert names; only owned experts are materialized. DP/EP synchronization excludes owner expert gradients from repeated SUM. Global clipping counts replicas once. ContextExecution connects global positions/segments to model attention; CP training remains blocked. publish_training_set and restore_training_set provide explicit complete-set DP/EP checkpoint admission/restoration. Failure leaves RECOVERY_REQUIRED, not a rollback claim. See ORDER_008_PROGRESS.md for exact limitations.

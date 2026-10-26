@@ -26,10 +26,28 @@ class ModelOutput:
 
 
 class ShinraForCausalLM(nn.Module):
-    def __init__(self, config: Configuration, *, device: str):
+    def __init__(self, config: Configuration, *, device: str, expert_execution=None, context_execution=None):
         super().__init__()
         require_operation(config, "model")
         recipe = InitializationRecipe.from_configuration(config)
+        if expert_execution is not None:
+            from shinra.distributed.expert_parallel import ExpertExecution
+            if not isinstance(expert_execution, ExpertExecution):
+                raise ValueError("explicit ExpertExecution required")
+            if config.get("distributed.ownership_manifest") is None or config.get("distributed.backend") != expert_execution.group.backend:
+                raise ValueError("approved ownership manifest and matching backend required")
+            from shinra.distributed.ownership import ExpertOwnership
+            admitted = ExpertOwnership.from_manifest(config.get("distributed.ownership_manifest"))
+            if admitted.identity != expert_execution.ownership.identity:
+                raise ValueError("EP ownership differs from configured manifest")
+            expert_execution.group.agree({"config": config.identity, "ownership": expert_execution.ownership.identity}, device=device)
+        self.expert_execution = expert_execution
+        self.context_execution = context_execution
+        if context_execution is not None:
+            from shinra.distributed.context_parallel import ContextExecution
+            if not isinstance(context_execution, ContextExecution) or config.get("distributed.backend") != context_execution.group.backend:
+                raise ValueError("explicit context group with matching backend required")
+            context_execution.group.agree({"config": config.identity, "context_ranks": context_execution.group.ranks}, device=device)
         self.context = config.get("model.max_position_embeddings")
         self.layer_count = config.get("model.num_hidden_layers")
         self.expert_count = config.get("model.num_routed_experts")
@@ -37,7 +55,8 @@ class ShinraForCausalLM(nn.Module):
         self.rope_identity = hashlib.sha256(json.dumps(dict(config.get("rope")), sort_keys=True,
                                                        separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
         self.embeddings = TokenEmbeddings(config, recipe, device=device)
-        self.layers = nn.ModuleList(DecoderBlock(config, recipe, layer=i, device=device)
+        self.layers = nn.ModuleList(DecoderBlock(config, recipe, layer=i, device=device, expert_execution=expert_execution,
+                                                context_execution=context_execution)
                                     for i in range(self.layer_count))
         self.final_norm = RMSNorm(config, recipe, name="final_norm.weight", device=device)
         self.lm_head = LanguageModelHead(config, recipe, device=device)
@@ -64,7 +83,10 @@ class ShinraForCausalLM(nn.Module):
         seen = set()
         previous_segment = None
         previous_position = -1
-        for segment, position in zip(segments.detach().cpu().tolist(), positions.detach().cpu().tolist()):
+        checked_positions, checked_segments = positions, segments
+        if self.context_execution is not None:
+            checked_positions, checked_segments = self.context_execution.metadata(positions, segments, token_uids)
+        for segment, position in zip(checked_segments.detach().cpu().tolist(), checked_positions.detach().cpu().tolist()):
             if segment != previous_segment:
                 if segment in seen or position != 0:
                     raise ValueError("full-sequence segments must be contiguous and start at position zero")

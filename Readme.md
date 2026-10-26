@@ -477,3 +477,7 @@ Three checkpoint write/verification defects were corrected in source; no save/lo
 ### Source continuation — 26 October 2026
 
 Native tokenizer/data, fresh-run DP training, distributed primitives and single-sequence inference source now exists. Coordinated training resume and EP/TP/CP model assembly remain incomplete. No model, tokenizer training, checkpoint or tests executed. See [current implementation status](docs/IMPLEMENTATION_STATUS.md) and [Order 007 report](docs/ORDER_007_IMPLEMENTATION.md).
+
+### Order 008 continuation
+
+EP is connected to model/training; CP is connected to model attention. Complete-set DP/EP Safetensors resume source has been added. TP and CP training remain incomplete. All execution remains prohibited and unverified. [Current report](docs/ORDER_008_PROGRESS.md).

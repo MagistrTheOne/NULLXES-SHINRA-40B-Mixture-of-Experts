@@ -117,3 +117,7 @@ Checkpoint transaction producers now use function-local imports of core initiali
 ## UNKNOWN / BLOCKED
 
 Actual GM compatibility, numerical execution, storage durability, complete distributed assembly and training resume are unverified or incomplete. Historical Order 005 reports describe the earlier 25-file revision.
+
+## Order 008 current override
+
+EP ownership now reaches canonical model/MoE/training modules. CP reaches model attention. Complete-set DP/EP restore and publication source exists in existing checkpoint modules. Earlier absent-integration statements describe Order 007; TP and CP training remain outstanding. No duplicate model files or additional packages created.

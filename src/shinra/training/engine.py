@@ -1,12 +1,12 @@
-"""Explicit full-replica DP optimizer transactions; no implicit local mode.
+"""Explicit DP or owner-sharded EP optimizer transactions; no implicit local mode.
 
-TP/EP/CP kernels are separate primitives and are not silently substituted for
-this full-replica orchestration. Physical topology is always caller-owned.
+EP uses disjoint document sources on the same caller-owned logical group.
+TP and context-sharded loss orchestration are not admitted by this coordinator.
 """
 from contextlib import contextmanager
 import torch
 import torch.distributed as dist
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint, set_checkpoint_early_stop
 
 from shinra.core.validation import require_operation
 from shinra.model.modeling import ModelOutput
@@ -54,7 +54,9 @@ def training_forward(model, batch, bias, *, recomputation: bool):
 
     for index, block in enumerate(model.layers):
         run, contexts, saved = make_run(block, bias[index])
-        hidden = checkpoint(run, hidden, use_reentrant=False, context_fn=contexts, preserve_rng_state=True)
+        # Every EP member must replay the complete collective sequence.
+        with set_checkpoint_early_stop(False):
+            hidden = checkpoint(run, hidden, use_reentrant=False, context_fn=contexts, preserve_rng_state=True)
         selections.append(saved["assignments"])
         loads.append(saved["counts"])
     return ModelOutput(model.lm_head(model.final_norm(hidden)), tuple(selections), tuple(loads)), ids
@@ -64,6 +66,8 @@ class TrainingEngine:
     def __init__(self, config, model, optimizer, scheduler, balances, stream, state, group: Group, telemetry):
         require_operation(config, "train")
         validate_model_precision(model)
+        if model.context_execution is not None:
+            raise ValueError("BLOCKED: context-sharded loss targets and stream cursor coordinator are not yet integrated")
         if config.get("training.gradient_clip_norm_type") != "l2":
             raise ValueError("explicit L2 clipping policy required")
         if len(balances) != 48 or scheduler.completed_step != state.successful_step:
@@ -72,13 +76,19 @@ class TrainingEngine:
         self.balances, self.stream, self.state, self.group, self.telemetry = balances, stream, state, group, telemetry
         self.device = model.embeddings.weight.device
         group.validate_device(model.embeddings.weight)
+        self.expert_execution = model.expert_execution
+        if self.expert_execution is not None and self.expert_execution.group.process_group is not group.process_group:
+            raise ValueError("this coordinator requires EP and unique-token source group to coincide")
+        self.owned_names = frozenset(name for name in optimizer.masters
+                                     if self.expert_execution is not None and ".moe.experts." in name)
         group.agree({"configuration": config.identity,
                      "manifest": stream.reader.manifest.identity,
                      "step": state.successful_step,
+                     "ownership": None if self.expert_execution is None else self.expert_execution.ownership.identity,
                      "parameters": [(name, list(value.shape), str(value.dtype))
-                                    for name, value in sorted(optimizer.masters.items())]}, device=self.device)
+                                    for name, value in sorted(optimizer.masters.items()) if name not in self.owned_names]}, device=self.device)
         if state.successful_step != 0 or state.consumed_tokens != 0 or optimizer.optimizer.state:
-            raise RuntimeError("BLOCKED: coordinated training resume admission is not implemented")
+            raise RuntimeError("construct an idle fresh engine, then use restore_training_set for complete-state resume")
         if model.configuration_identity != config.identity:
             raise ValueError("model and training configuration identities differ")
         if set(optimizer.parameters) != set(dict(model.named_parameters())) or any(
@@ -93,7 +103,8 @@ class TrainingEngine:
         with torch.no_grad():
             for name in sorted(optimizer.masters):
                 master = optimizer.masters[name]
-                dist.broadcast(master, src=group.ranks[0], group=group.process_group)
+                if name not in self.owned_names:
+                    dist.broadcast(master, src=group.ranks[0], group=group.process_group)
                 optimizer.parameters[name].copy_(master.to(optimizer.parameters[name].dtype))
         # Validate disjoint, complete manifest partitions without assigning them.
         bounds = torch.tensor([stream.committed.start_ordinal, stream.committed.end_ordinal], dtype=torch.int64, device=self.device)
@@ -114,6 +125,12 @@ class TrainingEngine:
             local_tokens, local_targets, numerator = 0, 0, 0.0
             for microbatch in range(self.config.get("training.accumulation_steps")):
                 batch = self.stream.next_batch()
+                if self.expert_execution is not None:
+                    available = int(self.group.integer_sum(torch.tensor(int(batch is not None), dtype=torch.int64, device=self.device)).item())
+                    if available == 0:
+                        break
+                    if available != self.group.size:
+                        raise RuntimeError("uneven EP source exhaustion; transaction aborted without advancing cursors")
                 if batch is None:
                     break
                 if len(batch.token_ids) > self.config.get("training.microbatch_tokens"):
@@ -136,9 +153,12 @@ class TrainingEngine:
             for balance in self.balances:
                 counts = self.group.integer_sum(torch.tensor(balance.local_counts(attempt), dtype=torch.int64, device=self.device))
                 balance.prepare(attempt, synchronized_counts=tuple(counts.cpu().tolist()), unique_tokens=tokens)
-            gradients = synchronize_gradients(self.optimizer.masters, self.optimizer.accumulated, self.group)
+            gradients = synchronize_gradients(self.optimizer.masters, self.optimizer.accumulated, self.group,
+                                              owned_names=self.owned_names)
             grad_norm = self.optimizer.install_gradients(gradients, global_tokens=targets,
-                                                         max_norm=self.config.get("training.max_grad_norm"))
+                                                         max_norm=self.config.get("training.max_grad_norm"),
+                                                         group=self.group if self.expert_execution is not None else None,
+                                                         owned_names=self.owned_names)
             rate = self.scheduler.next_lr()
             self.state.prepare()
             for balance in self.balances:

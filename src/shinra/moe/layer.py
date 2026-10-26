@@ -1,4 +1,4 @@
-"""Full resident expert bank; no implicit distributed execution or fallback."""
+"""Canonical resident or explicitly owner-sharded expert bank; no fallback."""
 import torch
 from torch import nn
 
@@ -12,30 +12,33 @@ from .experts import Expert
 
 
 class MoELayer(nn.Module):
-    """Resident computation primitive with externally managed balancing snapshot.
-
-    Distributed sharding must call explicit transport/ownership components. This
-    class does not infer a world size or claim to implement expert parallelism.
-    """
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str):
+    """Fixed 128-expert logical MoE, with explicit optional EP ownership/transport."""
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str, expert_execution=None):
         super().__init__()
         validate_architecture(config)
         self.chunk = config.get("moe.chunk_tokens")
         if self.chunk is None:
             raise ConfigurationError("moe.chunk_tokens", "explicit chunk size required")
         self.router = Router(config, recipe, layer=layer, device=device)
-        self.experts = nn.ModuleList(Expert(config, recipe, layer=layer, expert_id=e, device=device)
-                                     for e in range(config.get("model.num_routed_experts")))
+        self.layer, self.expert_execution = layer, expert_execution
+        self.num_experts = config.get("model.num_routed_experts")
+        owned = range(self.num_experts) if expert_execution is None else expert_execution.local_experts(layer)
+        self.experts = nn.ModuleDict({str(e): Expert(config, recipe, layer=layer, expert_id=e, device=device)
+                                      for e in owned})
 
     def forward(self, hidden: torch.Tensor, token_uids: torch.Tensor, balancing_bias: torch.Tensor,
                 *, replay_ids: torch.Tensor | None = None) -> tuple[torch.Tensor, Routing, torch.Tensor]:
         routing = self.router(hidden, balancing_bias, replay_ids=replay_ids)
-        plan = plan_dispatch(routing, token_uids, num_experts=len(self.experts))
+        plan = plan_dispatch(routing, token_uids, num_experts=self.num_experts)
         assigned = dispatch(hidden, plan)
+        if self.expert_execution is not None:
+            result = self.expert_execution.compute(assigned, routing, plan, token_uids,
+                                                  layer=self.layer, experts=self.experts, chunk_tokens=self.chunk)
+            return combine(result, routing, plan, output_dtype=hidden.dtype), routing, plan.expert_counts
         counts = plan.expert_counts.detach().cpu().tolist()
         outputs = []
         offset = 0
-        for expert, count in zip(self.experts, counts):
+        for expert, count in zip(self.experts.values(), counts):
             if count:
                 outputs.append(expert(assigned[offset:offset + count], chunk_tokens=self.chunk))
             offset += count

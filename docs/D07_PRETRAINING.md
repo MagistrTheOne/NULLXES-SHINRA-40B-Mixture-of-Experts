@@ -76,3 +76,7 @@ Checkpoint source существует. Повторный аудит испра
 ## Order 007 implementation boundary — 26.10.2026
 
 Source now includes full-vocabulary causal objective, FP32 master AdamW adapter, explicit scheduler, global target-count normalization, accumulation/clipping and non-reentrant recomputation with frozen routing. Only fresh full-replica DP orchestration is implemented. EP/TP/CP assembly and coordinated restore are incomplete. Optimizer, coefficients and policies remain unapproved null settings. See ORDER_007_IMPLEMENTATION.md.
+
+## Order 008 source boundary
+
+DP/EP TrainingEngine now uses unique source partitions and owner-only expert gradients. Non-reentrant checkpoint replay disables early stop to preserve collective ordering. Resume is explicit through restore_training_set, after complete rank-set checks. CP model attention exists; CP training and TP assembly are incomplete. See ORDER_008_PROGRESS.md.

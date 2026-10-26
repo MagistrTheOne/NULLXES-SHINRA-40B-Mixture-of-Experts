@@ -38,3 +38,7 @@ Corrected P1-01 payload total_size, P1-02 optimizer device_policy schema and P1-
 ## 26.10.2026 — Order 007 source continuation
 
 Added native tokenizer/data, fresh-run DP training, real distributed primitives and single-sequence inference. Extended existing checkpoint producer/model recovery APIs; retained three P1 corrections. Added explicit null operational policy keys and RoPE cache identity. Architecture dimensions unchanged. No algorithms/models/tests executed. Full implementation is not complete: see ORDER_007_IMPLEMENTATION.md.
+
+## 26.10.2026 — Order 008 continuation
+
+Published Order 007 as 355e37fae2d461b858ae1e9566e666edb0fdaf35. Added EP ownership integration through model/training, owner-aware gradient synchronization/clipping, CP model attention and complete-set DP/EP Safetensors resume source. Baseline dimensions and single YAML unchanged. TP and CP training remain incomplete; no runtime executed.

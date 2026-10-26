@@ -45,7 +45,8 @@ class MasterOptimizer:
                 self.accumulated[name] = grad.clone()
             parameter.grad = None
 
-    def install_gradients(self, gradients: dict[str, torch.Tensor], *, global_tokens: int, max_norm: float):
+    def install_gradients(self, gradients: dict[str, torch.Tensor], *, global_tokens: int, max_norm: float,
+                          group=None, owned_names=frozenset()):
         if type(global_tokens) is not int or global_tokens <= 0:
             raise ValueError("global loss target count must be positive")
         if set(gradients) != set(self.masters):
@@ -55,6 +56,21 @@ class MasterOptimizer:
             if value.dtype != torch.float32 or value.shape != master.shape or value.device != master.device:
                 raise ValueError("FP32 gradient shape/device mismatch")
             master.grad = value / global_tokens
+        if group is not None:
+            # Replicated non-expert tensors count once, owner expert tensors
+            # count once globally. Never count every replica in clipping norm.
+            device = next(iter(self.masters.values())).device
+            square = torch.zeros((), dtype=torch.float64, device=device)
+            for name, master in self.masters.items():
+                if name in owned_names or group.rank == 0:
+                    square += master.grad.double().square().sum()
+            norm = group.sum(square).sqrt()
+            if not bool(torch.isfinite(norm)):
+                raise FloatingPointError("nonfinite global EP gradient norm")
+            scale = torch.clamp(max_norm / (norm + 1e-6), max=1.0)
+            for master in self.masters.values():
+                master.grad.mul_(scale.to(master.grad.dtype))
+            return norm
         return torch.nn.utils.clip_grad_norm_(list(self.masters.values()), max_norm=max_norm,
                                              norm_type=2.0, error_if_nonfinite=True, foreach=False)
 

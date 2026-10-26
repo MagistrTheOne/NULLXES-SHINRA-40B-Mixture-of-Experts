@@ -43,3 +43,7 @@ The pinned [v0.6.2 Torch adapter](https://github.com/huggingface/safetensors/blo
 ## Order 007 API review — 26.10.2026
 
 No new external dependency added. New algorithms use stdlib and the externally managed Torch stack. Official documentation reviewed: [AdamW 2.14](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html), [distributed 2.14](https://docs.pytorch.org/docs/2.14/distributed.html), [non-reentrant checkpoint 2.14](https://docs.pytorch.org/docs/2.14/checkpoint.html). Calls include all_gather, all_reduce, all_to_all_single, broadcast, process-group membership, AdamW and checkpoint(context_fn, use_reentrant=False). Explicit custom autograd pairs communication; documentation does not establish runtime correctness. Installed GM version/backend support remains UNKNOWN. No installation or version import performed. Existing license register and pinned requirements remain unchanged.
+
+## Order 008 API review — 26.10.2026
+
+Rechecked [PyTorch checkpoint 2.14](https://docs.pytorch.org/docs/2.14/checkpoint.html) and [distributed 2.14](https://docs.pytorch.org/docs/2.14/distributed.html). set_checkpoint_early_stop(False) surrounds original checkpoint forward; explicit collectives remain caller-group owned. Actual GM compatibility remains UNKNOWN; no dependency added or installed.

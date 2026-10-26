@@ -3,6 +3,7 @@
 This transport replicates KV, not a ring or a memory-efficiency claim. Logical
 context partitioning is real; model-level CP assembly is a separate contract.
 """
+from dataclasses import dataclass
 import torch
 import torch.distributed as dist
 from shinra.model.attention import _BlockwiseGQA, require_ieee_matmul
@@ -51,3 +52,41 @@ def context_attention(q, local_k, local_v, qpos, local_kpos, qseg, local_kseg, *
     segments = _Gather.apply(local_kseg, sizes, group)
     # Explicit global positions determine mask; no sliding window or re-RoPE.
     return _BlockwiseGQA.apply(q, keys, values, qpos, positions, qseg, segments, query_chunk, key_chunk)
+
+
+@dataclass(frozen=True)
+class ContextExecution:
+    """Caller-owned context group; partitions concatenate in group-rank order."""
+    group: Group
+
+    def __post_init__(self):
+        if self.group.size < 2:
+            raise ValueError("context parallelism requires an explicit multi-member group")
+
+    def sizes(self, value):
+        self.group.validate_device(value)
+        length = torch.tensor(value.shape[0], dtype=torch.int64, device=value.device)
+        lengths = [torch.empty_like(length) for _ in self.group.ranks]
+        dist.all_gather(lengths, length, group=self.group.process_group)
+        sizes = tuple(int(x.item()) for x in lengths)
+        if any(n <= 0 for n in sizes):
+            raise ValueError("this context adapter requires nonempty contiguous partitions")
+        return sizes
+
+    def metadata(self, positions, segments, token_uids):
+        sizes = self.sizes(positions)
+        if sum(sizes) > 262144:
+            raise ValueError("global packed context exceeds architectural limit")
+        combined = _Gather.apply(torch.stack((positions, segments, token_uids), dim=1), sizes, self.group)
+        if combined[:, 2].unique().numel() != combined.shape[0]:
+            raise ValueError("context partitions overlap in token identity")
+        return combined[:, 0], combined[:, 1]
+
+    def attend(self, attention, q, k, v, positions, segments):
+        output = context_attention(q, k, v, positions, positions, segments, segments,
+                                   sizes=self.sizes(k), group=self.group,
+                                   query_chunk=attention.qchunk, key_chunk=attention.kchunk)
+        result = torch.nn.functional.linear(output.to(q.dtype).reshape(q.shape[0], 4096), attention.o_proj["weight"])
+        if not bool(torch.isfinite(result).all()):
+            raise FloatingPointError("nonfinite context attention output")
+        return result

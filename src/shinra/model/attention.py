@@ -104,8 +104,9 @@ class _BlockwiseGQA(torch.autograd.Function):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer_id: int, device: str):
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer_id: int, device: str, context_execution=None):
         super().__init__()
+        self.context_execution = context_execution
         require_operation(config, "model")
         if config.get("attention.backend") != "torch_blockwise_exact":
             raise ConfigurationError("attention.backend", "explicit torch_blockwise_exact selection required; no fallback")
@@ -157,4 +158,6 @@ class Attention(nn.Module):
 
     def forward(self, hidden, positions, segments):
         q,k,v = self.project(hidden, positions)
+        if self.context_execution is not None:
+            return self.context_execution.attend(self, q, k, v, positions, segments)
         return self.attend(q,k,v,positions,positions,segments,segments)

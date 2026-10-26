@@ -19,6 +19,8 @@ class GenerationResult:
 def generate(model, artifact: TokenizerArtifact, config, prompt: tuple[int, ...], *,
              checkpoint_identity: str, balancing_bias: torch.Tensor) -> GenerationResult:
     require_operation(config, "infer")
+    if model.expert_execution is not None or model.context_execution is not None:
+        raise ValueError("single-sequence generation requires resident experts; distributed generation is not admitted")
     if artifact.identity != config.get("tokenizer.artifact_identity") or not artifact.tokenizer.vocabulary.complete:
         raise ValueError("native tokenizer identity mismatch")
     if getattr(model, "checkpoint_identity", None) != checkpoint_identity or model.configuration_identity != config.identity:

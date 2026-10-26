@@ -10,13 +10,13 @@ from .normalization import RMSNorm
 
 
 class DecoderBlock(nn.Module):
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str):
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str, expert_execution=None, context_execution=None):
         super().__init__()
         prefix = f"layers.{layer}"
         self.attention_norm = RMSNorm(config, recipe, name=f"{prefix}.attention_norm.weight", device=device)
-        self.attention = Attention(config, recipe, layer_id=layer, device=device)
+        self.attention = Attention(config, recipe, layer_id=layer, device=device, context_execution=context_execution)
         self.moe_norm = RMSNorm(config, recipe, name=f"{prefix}.moe_norm.weight", device=device)
-        self.moe = MoELayer(config, recipe, layer=layer, device=device)
+        self.moe = MoELayer(config, recipe, layer=layer, device=device, expert_execution=expert_execution)
 
     def forward(self, hidden, positions, segments, token_uids, balancing_bias, *, replay_ids=None):
         hidden = hidden + self.attention(self.attention_norm(hidden), positions, segments)
