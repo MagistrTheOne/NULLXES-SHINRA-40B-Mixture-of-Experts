@@ -4,6 +4,8 @@ No instance is constructed on import. Distributed execution and KV-cache decode
 are separate integrations; this full-sequence primitive does not emulate them.
 """
 from dataclasses import dataclass
+import hashlib
+import json
 import torch
 from torch import nn
 
@@ -32,6 +34,8 @@ class ShinraForCausalLM(nn.Module):
         self.layer_count = config.get("model.num_hidden_layers")
         self.expert_count = config.get("model.num_routed_experts")
         self.configuration_identity = config.identity
+        self.rope_identity = hashlib.sha256(json.dumps(dict(config.get("rope")), sort_keys=True,
+                                                       separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
         self.embeddings = TokenEmbeddings(config, recipe, device=device)
         self.layers = nn.ModuleList(DecoderBlock(config, recipe, layer=i, device=device)
                                     for i in range(self.layer_count))

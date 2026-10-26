@@ -34,3 +34,7 @@ Checkpoint API поддерживает exact tensor inventories, model/optimize
 ## 25.10.2026 — remediation of 3e582820 checkpoint defects
 
 Corrected P1-01 payload total_size, P1-02 optimizer device_policy schema and P1-03 typed inventory conversion in canonical checkpoint sources. Removed unsupported FNUZ dtype admission for pinned Safetensors 0.6.2; no conversion/fallback introduced. Synchronized stale current documentation; retained historical entries. Added independent initialization proposal and current full static audit with inventory. Model dimensions, YAML and dependencies unchanged. No execution, tests, checkpoint artifacts, installations, downloads, commit or push. Publication/resume remain NO-GO.
+
+## 26.10.2026 — Order 007 source continuation
+
+Added native tokenizer/data, fresh-run DP training, real distributed primitives and single-sequence inference. Extended existing checkpoint producer/model recovery APIs; retained three P1 corrections. Added explicit null operational policy keys and RoPE cache identity. Architecture dimensions unchanged. No algorithms/models/tests executed. Full implementation is not complete: see ORDER_007_IMPLEMENTATION.md.

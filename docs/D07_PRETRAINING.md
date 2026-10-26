@@ -72,3 +72,7 @@ This code does not select a storage backend or claim crash durability. Publicati
 Optimizer/schedule/coefficients, batch/accumulation, clipping, token budget, initialization, corpus, GM API version, chosen backends, storage durability UNKNOWN. Соответствующие операции BLOCKED, архитектурные interfaces не подменяются defaults. Runtime correctness не подтверждена. NOT EXECUTED: training, model initialization, checkpoint save/load, collectives, tests.
 
 Checkpoint source существует. Повторный аудит исправил payload total_size, строгую device_policy и нормализацию имён inventory между write и manifest verification. Safetensors остаётся единственным tensor format; metadata — JSON. Publication/training resume остаются NO-GO до разрешённой runtime-верификации, storage admission и интеграции отсутствующих training-state producers. Детали — [повторный аудит](AUDIT_REMEDIATION_2026-10-25.md).
+
+## Order 007 implementation boundary — 26.10.2026
+
+Source now includes full-vocabulary causal objective, FP32 master AdamW adapter, explicit scheduler, global target-count normalization, accumulation/clipping and non-reentrant recomputation with frozen routing. Only fresh full-replica DP orchestration is implemented. EP/TP/CP assembly and coordinated restore are incomplete. Optimizer, coefficients and policies remain unapproved null settings. See ORDER_007_IMPLEMENTATION.md.

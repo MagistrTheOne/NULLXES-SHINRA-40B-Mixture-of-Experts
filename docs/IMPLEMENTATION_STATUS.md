@@ -1,44 +1,29 @@
 # Implementation status
 
-25.10.2026. Static status after Engineering Order 005 source audit. This is not runtime validation.
+26.10.2026 — Engineering Order 007. Source implementation, not runtime validation.
 
-## IMPLEMENTED SOURCE
+Previous checkpoint fixes are committed in `3f3c8b4` and were pushed separately. Order 007 changes remain uncommitted. Historical audit reports describe their original revisions.
 
-| Area | Existing modules | Static status |
+| Area | Actual source | Remaining boundary |
 |---|---|---|
-| Core configuration | `core/configuration.py`, `core/validation.py` | Canonical single-file YAML decoder, immutable snapshot, closed schema, architecture and operation blockers |
-| Initialization | `core/initialization.py` | Explicit recipe and per-logical-tensor seed; FP32 sampling followed by storage-dtype conversion; actual initialization remains prohibited and blocked by null config fields |
-| Model | `model/embeddings.py`, `normalization.py`, `rope.py`, `attention.py`, `decoder.py`, `modeling.py`, `lm_head.py` | Source exists for embeddings, independent Q/K per-head RMSNorm, RoPE, blockwise exact GQA, residual decoder, full model assembly and untied output head |
-| MoE | `moe/router.py`, `experts.py`, `dispatch.py`, `combine.py`, `balancing.py`, `layer.py` | Source exists for FP32 routing, SwiGLU experts, stable local dispatch/combine, chunked assignments and balancing transaction state |
-| Checkpoint | `checkpoint/manifest.py`, `serialization.py`, `transactions.py`, `recovery.py` | Safetensors-only generic tensor groups, strict JSON indexes/manifest, hashes, stable-name optimizer snapshots, staged writer and explicit atomic-publication capability; static source only |
+| Core/model/MoE | Existing canonical 48-block model retained; RoPE cache identity added | Runtime unverified; execution prohibited |
+| Tokenizer | Native byte BPE encoding, decoding, exact pair-count training, strict vocabulary/merge validation, JSON artifact identity, fragment streaming | No trained artifact or approved corpus; chat header grammar unresolved |
+| Data | Approved source manifest, provenance, byte hashes, explicit language evidence, exact deduplication, whole-document packing, transactional stream cursor | No corpus; document splitting policy absent; in-memory dedup/prefix replay not a scalable storage backend |
+| Training | Full-vocabulary summed causal loss, global target normalization, explicit FP32-master AdamW, scheduler, accumulation, clipping, recomputation and transaction state | Fresh-run full-replica DP coordinator only; operational settings null; coordinated resume absent |
+| Distributed | Real collectives, paired all-to-all backward, ownership, tensor partition primitives, gathered-KV context attention, DP synchronization | EP/TP/CP primitives are not integrated into the 48-layer model; no topology selected |
+| Checkpoint | Previous Safetensors fixes retained; real training snapshot producer and identity-checked model load added | No coordinated multi-rank publication/restore; storage durability UNKNOWN; no checkpoint executed |
+| Inference | Single-sequence prefill/decode, transactional KV cache, sampling, stop/context boundaries, tokenizer identity | No generation executed; structured chat grammar and forbidden-output policy need decisions |
 
-No source modules are present for tokenizer, data, training orchestration/objective/optimizer/scheduler, distributed communication, or inference generation/KV cache. Their contracts are not implementations.
+## Static evidence
 
-## IMPLEMENTATION GAPS
+59 Python modules parsed using AST without importing SHINRA. Current detailed limitations, contracts and changed-file inventory: [ORDER_007_IMPLEMENTATION](ORDER_007_IMPLEMENTATION.md). Static source checks do not establish numerical correctness, performance or runtime compatibility.
 
-| Stage | State |
-|---|---|
-| Foundation/configuration | Implemented source; static parser checks only |
-| Core model | Implemented source; backend/chunk/initialization prerequisites remain UNKNOWN |
-| MoE | Implemented local primitives; actual transaction orchestration and distributed expert transport absent |
-| Integration | Model assembly exists; runtime correctness unverified |
-| Tokenizer | Not implemented; artifacts and approval absent |
-| Data pipeline | Not implemented; corpus NOT APPROVED |
-| Training infrastructure | Not implemented; optimizer, objective, scheduler and engine absent |
-| Checkpointing | Source implemented for serialization and identity-checked recovery; operational model/training integration and storage durability remain unverified/BLOCKED |
-| Distributed | Not implemented; no collectives or ownership implementation |
-| Inference | Not implemented; no generation or KV-cache implementation |
+Architecture remains 39,694,338,560 trainable parameters / 4,304,898,560 conventional active parameters. No Dense FFN/shared experts or smaller model added. One YAML remains; three new nullable operational policy fields do not select training defaults.
 
-## STATIC AUDIT
+## BLOCKED / INCOMPLETE
 
-See [Engineering Order 005 audit](./ENGINEERING_ORDER_005_AUDIT.md) for the initial revision and findings. Engineering Order 006 Stage A source and dependency review is recorded in [D07](./D07_PRETRAINING.md) and [D09](./D09_DEPENDENCIES.md).
+Training resume is explicitly rejected by TrainingEngine for nonzero progress or populated optimizer state until coordinated admission/restoration exists. Generic checkpoint tensor loading is not an end-to-end training resume. EP/TP/CP assembly and checkpoint set coordination remain implementation work, not completed features. Approved corpus/tokenizer registry, training settings, GM API compatibility and storage guarantees are also absent.
 
 ## NOT EXECUTED
 
-No model/tokenizer initialization, forward/backward, training, inference, test creation or execution, dependency installation, downloads, deployment, or GPU planning. No runtime correctness or performance claim is made.
-
-## Current re-audit — 25.10.2026
-
-Base HEAD 3e5828200dac53b5ff22e31d9175c45e73c6ff8c. Three HIGH checkpoint defects corrected in source: payload byte totals, strict optimizer device_policy, typed name inventories for write/read. Unsupported FNUZ variants rejected for pinned Safetensors 0.6.2. AST review covers 25 modules; no model/checkpoint execution. **Publication / training resume: NO-GO remains.**
-
-Full findings, actual inventory, changed files and blockers: [AUDIT_REMEDIATION_2026-10-25](AUDIT_REMEDIATION_2026-10-25.md). Initialization candidate: [INITIALIZATION_RECIPE](INITIALIZATION_RECIPE.md). Tokenizer/data/training/distributed/inference source remains absent; no completion claimed.
+No model initialization, forward/backward, training, inference, checkpoint round-trip, tokenizer training, tests, downloads, installation, deployment or GPU planning. No runtime readiness claim.

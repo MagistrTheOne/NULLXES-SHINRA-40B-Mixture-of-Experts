@@ -349,3 +349,53 @@ def recover_checkpoint(root: str | Path, transaction_id: str, *,
     if manifest.architecture_identity != architecture_identity:
         raise CheckpointError("checkpoint architecture identity mismatch")
     return manifest
+
+
+def write_training_snapshot(engine, root: str | Path, *, transaction_id: str,
+                            source_revision: str, rng_devices: tuple[int, ...], max_shard_bytes: int) -> Path:
+    """Stage one real DP replica snapshot; publication remains a separate action.
+
+    The caller must freeze this engine and all writers for the entire snapshot.
+    A distributed checkpoint set requires every member's matching transaction;
+    staging one member does not publish a recoverable distributed training run.
+    """
+    from shinra.core.initialization import parameter_specs
+    from shinra.training.precision import capture_rng
+    from .serialization import capture_optimizer_state, module_state_dict
+
+    progress = engine.state.metadata()
+    if engine.stream.attempt is not None or engine.scheduler.completed_step != progress["successful_step"]:
+        raise CheckpointError("training snapshot components are not committed together")
+    router = {}
+    balancing_metadata = []
+    for layer, balance in enumerate(engine.balances):
+        metadata = balance.checkpoint_metadata()
+        if metadata["completed_step"] != progress["successful_step"]:
+            raise CheckpointError("router step differs from committed training step")
+        balancing_metadata.append(metadata)
+        router[f"layers.{layer}.bias"] = balance.bias
+        router[f"layers.{layer}.completed_step"] = balance.completed_step
+    optimizer = capture_optimizer_state(engine.optimizer.optimizer, engine.optimizer.masters)
+    groups = {"model": module_state_dict(engine.model), "optimizer": optimizer.tensors,
+              "master": engine.optimizer.masters, "router": router, "rng": capture_rng(rng_devices)}
+    dtype_names = {"bfloat16": "BF16", "float32": "F32"}
+    model_expected = {spec.name: TensorSpec(spec.shape, dtype_names[spec.dtype]) for spec in parameter_specs(engine.config)}
+    expected = {name: tensor_inventory(tensors) for name, tensors in groups.items()}
+    expected["model"] = model_expected
+    expected["master"] = {name: TensorSpec(spec.shape, "F32") for name, spec in model_expected.items()}
+    metadata = {
+        "optimizer": optimizer.metadata(), "scheduler_state": engine.scheduler.metadata(),
+        "data_cursor": engine.stream.committed.metadata(), "training_progress": progress,
+        "tokenizer_identity": engine.config.get("tokenizer.artifact_identity"),
+        "corpus_manifest_identity": engine.config.get("data.manifest_identity"),
+        "ownership": {"mode": "full_replica_dp", "ranks": list(engine.group.ranks), "rank": engine.group.rank},
+        "precision_policy": {"model": "bf16", "router": "float32", "optimizer": "fp32_master"},
+        "source_revision": source_revision, "state_schema_version": 1, "state_phase": "COMMITTED",
+        "committed_step": progress["successful_step"], "balancing": balancing_metadata,
+        "rng_devices": list(rng_devices),
+    }
+    return write_checkpoint(root, transaction_id=transaction_id, purpose="training_resume",
+                            successful_step=progress["successful_step"], config_identity=engine.config.identity,
+                            architecture_identity=engine.config.architecture_identity, tensor_groups=groups,
+                            expected_inventories=expected, required_groups=("model", "optimizer", "master", "router", "rng"),
+                            metadata=metadata, max_shard_bytes=max_shard_bytes)

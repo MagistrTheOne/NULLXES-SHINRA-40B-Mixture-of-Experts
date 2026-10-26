@@ -49,3 +49,7 @@ D05 exact BPE требует границ content fragments. Data streaming не
 ## Re-audit 25.10.2026
 
 [Current findings](AUDIT_REMEDIATION_2026-10-25.md), [initialization candidate](INITIALIZATION_RECIPE.md). Никакие numeric proposals не переведены в executable defaults. Publication/training resume NO-GO сохраняется.
+
+## Order 007 source decisions — 26.10.2026
+
+Three operational schema fields added as null: training.optimizer_precision, training.parameter_group_policy, training.gradient_clip_norm_type. Implemented candidates are fp32_master, uniform_decay and l2; adding their validation does not approve their use. Uniform decay applies also to parameters with globally zero gradients. No pre-existing null filled. Native tokenizer trainer is exact in-memory pair recounting, without invented vocabulary. Whole documents exceeding context are rejected until split policy approval. Full distributed assembly, coordinated checkpoint-set publication/restore and structured chat header grammar remain incomplete.

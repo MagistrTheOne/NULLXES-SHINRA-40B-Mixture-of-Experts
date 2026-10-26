@@ -78,6 +78,9 @@ data:
 training:
   precision: bf16
   optimizer: null
+  optimizer_precision: null
+  parameter_group_policy: null
+  gradient_clip_norm_type: null
   learning_rate: null
   beta1: null
   beta2: null

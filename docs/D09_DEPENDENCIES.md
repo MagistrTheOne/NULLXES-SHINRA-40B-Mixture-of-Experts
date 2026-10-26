@@ -39,3 +39,7 @@ AST-разбор 25 Python-файлов без импорта модулей. П
 ## Dtype admission correction — 25.10.2026
 
 The pinned [v0.6.2 Torch adapter](https://github.com/huggingface/safetensors/blob/v0.6.2/bindings/python/py_src/safetensors/torch.py) lists float8_e4m3fn and float8_e5m2 but not FNUZ variants. SHINRA now rejects F8_E4M3FNUZ/F8_E5M2FNUZ at inventory/manifest admission, without casting. This does not enable FP8 model execution. Requirements unchanged; no package installed. Actual GM compatibility remains UNKNOWN.
+
+## Order 007 API review — 26.10.2026
+
+No new external dependency added. New algorithms use stdlib and the externally managed Torch stack. Official documentation reviewed: [AdamW 2.14](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html), [distributed 2.14](https://docs.pytorch.org/docs/2.14/distributed.html), [non-reentrant checkpoint 2.14](https://docs.pytorch.org/docs/2.14/checkpoint.html). Calls include all_gather, all_reduce, all_to_all_single, broadcast, process-group membership, AdamW and checkpoint(context_fn, use_reentrant=False). Explicit custom autograd pairs communication; documentation does not establish runtime correctness. Installed GM version/backend support remains UNKNOWN. No installation or version import performed. Existing license register and pinned requirements remain unchanged.

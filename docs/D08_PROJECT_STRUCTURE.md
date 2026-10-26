@@ -108,10 +108,12 @@ Cache protocol передаётся attention как объект явного �
 
 Подробный mapping всех модулей: [MODULE_CONTRACTS](MODULE_CONTRACTS.md). Будущие pyproject/requirements не дублируют списки зависимостей: один requirements — direct runtime requirements кроме GM; packaging build backend отдельно документируется D09. Не создавать файлов ради дерева, пустых implementation modules или дублирующих версий.
 
-## ACTUAL SOURCE STATUS
+## ACTUAL SOURCE STATUS — 26.10.2026
 
-Существуют `core`, `model` и `moe` модули, перечисленные в фактическом inventory. Пакет `checkpoint` существует: __init__.py, manifest.py, serialization.py, transactions.py, recovery.py. `tokenizer`, `data`, `training`, `distributed` и `inference` отсутствуют в `src`. Статический import graph существующих Python-модулей рассмотрен в Engineering Order 005 audit; отсутствие циклов по AST не подтверждает runtime compatibility.
+All listed packages now exist: 59 Python files including package markers. This is file/source presence, not full system readiness. Tokenizer/data implementations, fresh-run DP training, distributed primitives and single-sequence inference have been added. Complete EP/TP/CP model assembly and coordinated training restore remain absent. See [implementation report](ORDER_007_IMPLEMENTATION.md).
+
+Checkpoint transaction producers now use function-local imports of core initialization/training precision; neither imports checkpoint. Model math does not import inference or training. Inference orchestration reuses canonical blocks and attention projections.
 
 ## UNKNOWN / BLOCKED
 
-Order 004 разрешил реализацию. Текущие 25 Python-модулей рассмотрены; AST import graph без обнаруженных циклов. Runtime compatibility, storage durability и отсутствующие системные компоненты остаются UNKNOWN/BLOCKED. См. [повторный аудит](AUDIT_REMEDIATION_2026-10-25.md).
+Actual GM compatibility, numerical execution, storage durability, complete distributed assembly and training resume are unverified or incomplete. Historical Order 005 reports describe the earlier 25-file revision.

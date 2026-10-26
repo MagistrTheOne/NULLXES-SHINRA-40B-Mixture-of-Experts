@@ -48,3 +48,19 @@ def restore_module_state(module: Any, tensors: Mapping[str, Any]) -> None:
     if not callable(getattr(module, "load_state_dict", None)):
         raise CheckpointError("module must provide load_state_dict()")
     module.load_state_dict(dict(tensors), strict=True)
+
+
+def load_model_checkpoint(model, config, root: str | Path, transaction_id: str, *, device: str):
+    """Apply model tensors only after committed transaction and fixed D02 admission."""
+    from shinra.core.initialization import parameter_specs
+
+    manifest = recover_checkpoint(root, transaction_id, config_identity=config.identity,
+                                  architecture_identity=config.architecture_identity)
+    expected = {spec.name: TensorSpec(spec.shape, {"bfloat16": "BF16", "float32": "F32"}[spec.dtype])
+                for spec in parameter_specs(config)}
+    tensors = load_tensor_group(Path(root)/transaction_id, manifest.groups["model"], expected, device=device)
+    # Invalidate an old identity before any potentially partial mutation.
+    model.checkpoint_identity = None
+    restore_module_state(model, tensors)
+    model.checkpoint_identity = manifest.sha256
+    return manifest
