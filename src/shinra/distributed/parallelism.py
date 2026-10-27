@@ -83,3 +83,90 @@ def synchronize_gradients(parameters: dict, accumulated: dict, group: Group, *, 
         # inverse EP communication; reducing them again would double-count.
         result[name] = value if name in owned_names else group.sum(value)
     return result
+
+
+class _GatherFeatures(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, value, group):
+        group.validate_device(value)
+        parts = [torch.empty_like(value) for _ in group.ranks]
+        dist.all_gather(parts, value.contiguous(), group=group.process_group)
+        ctx.group, ctx.width = group, value.shape[-1]
+        return torch.cat(parts, dim=-1)
+
+    @staticmethod
+    def backward(ctx, gradient):
+        # Every TP member represents the same logical output/loss. Summing
+        # replicated output gradients here would multiply the derivative by TP.
+        start = ctx.group.rank * ctx.width
+        return gradient[..., start:start+ctx.width].contiguous(), None
+
+
+@dataclass(frozen=True)
+class TensorExecution:
+    """Weight-sharded TP with replicated full activations and full-vocab logits.
+
+    Gathered Q/K/V retain global head ordering. This deliberately does not claim
+    activation-memory efficiency or use a different SHINRA attention algorithm.
+    """
+    group: Group
+
+    def __post_init__(self):
+        if self.group.size not in (2, 4, 8):
+            raise ValueError("TP must partition all 8 KV heads and corresponding 32 Q heads exactly")
+
+    def partition(self, spec):
+        if spec.role == "norm" or spec.role == "router":
+            return None  # Explicitly replicated, including independent QK gamma.
+        if len(spec.shape) != 2:
+            raise ValueError("TP weight must have a two-dimensional logical shape")
+        axis = 1 if spec.name == "embeddings.weight" else 0
+        if spec.shape[axis] % self.group.size:
+            raise ValueError("logical tensor dimension does not divide TP membership")
+        extent = spec.shape[axis] // self.group.size
+        return TensorPartition(spec.shape, axis, tuple(i*extent for i in range(self.group.size+1)))
+
+    def initialize(self, spec, recipe, *, device):
+        from shinra.core.initialization import initialize_parameter
+        partition = self.partition(spec)
+        # Canonical logical sampling is independent of slice boundaries. Only
+        # the source generates the FULL logical stream, with the legacy seed
+        # and FP32 sampling/cast semantics. Other members receive those bytes.
+        # Full temporary allocation is intentional and is not a VRAM claim.
+        with torch.no_grad():
+            if self.group.rank == 0:
+                full = initialize_parameter(spec, recipe, device=device).detach()
+            else:
+                dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[spec.dtype]
+                full = torch.empty(spec.shape, dtype=dtype, device=device)
+            self.group.validate_device(full)
+            dist.broadcast(full, src=self.group.ranks[0], group=self.group.process_group)
+            if partition is None:
+                local = full
+            else:
+                start, stop = partition.offsets[self.group.rank:self.group.rank+2]
+                local = full.narrow(partition.axis, start, stop-start).contiguous().clone()
+        return torch.nn.Parameter(local)
+
+    def linear(self, value, weight):
+        # All non-embedding matrix shards own output rows. Input-gradient SUM
+        # and output-feature gather have deliberately different adjoints.
+        local = F.linear(_Copy.apply(value, self.group), weight)
+        return _GatherFeatures.apply(local, self.group)
+
+    def embedding(self, token_ids, weight):
+        return _GatherFeatures.apply(F.embedding(token_ids, weight, padding_idx=None), self.group)
+
+    def inventory(self, specs):
+        result = {}
+        for spec in specs:
+            partition = self.partition(spec)
+            shape = list(spec.shape)
+            if partition is None:
+                entry = {"logical_shape": list(spec.shape), "axis": None, "start": None, "stop": None}
+            else:
+                start, stop = partition.offsets[self.group.rank:self.group.rank+2]
+                shape[partition.axis] = stop-start
+                entry = {"logical_shape": list(spec.shape), "axis": partition.axis, "start": start, "stop": stop}
+            result[spec.name] = {**entry, "local_shape": shape, "dtype": spec.dtype}
+        return result

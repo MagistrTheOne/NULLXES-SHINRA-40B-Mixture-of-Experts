@@ -42,3 +42,7 @@ Added native tokenizer/data, fresh-run DP training, real distributed primitives 
 ## 26.10.2026 — Order 008 continuation
 
 Published Order 007 as 355e37fae2d461b858ae1e9566e666edb0fdaf35. Added EP ownership integration through model/training, owner-aware gradient synchronization/clipping, CP model attention and complete-set DP/EP Safetensors resume source. Baseline dimensions and single YAML unchanged. TP and CP training remain incomplete; no runtime executed.
+
+## Order 009 continuation — 27.10.2026
+
+Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).

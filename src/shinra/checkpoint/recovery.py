@@ -54,6 +54,9 @@ def load_model_checkpoint(model, config, root: str | Path, transaction_id: str, 
     """Apply model tensors only after committed transaction and fixed D02 admission."""
     from shinra.core.initialization import parameter_specs
 
+    if model.tensor_execution is not None:
+        raise CheckpointError("TP shard inventory admission is not yet integrated; no implicit repartitioning")
+
     manifest = recover_checkpoint(root, transaction_id, config_identity=config.identity,
                                   architecture_identity=config.architecture_identity)
     expected = {spec.name: TensorSpec(spec.shape, {"bfloat16": "BF16", "float32": "F32"}[spec.dtype])

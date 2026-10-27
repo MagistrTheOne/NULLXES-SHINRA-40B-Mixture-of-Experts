@@ -104,9 +104,10 @@ class _BlockwiseGQA(torch.autograd.Function):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer_id: int, device: str, context_execution=None):
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer_id: int, device: str, context_execution=None, tensor_execution=None):
         super().__init__()
         self.context_execution = context_execution
+        self.tensor_execution = tensor_execution
         require_operation(config, "model")
         if config.get("attention.backend") != "torch_blockwise_exact":
             raise ConfigurationError("attention.backend", "explicit torch_blockwise_exact selection required; no fallback")
@@ -124,9 +125,9 @@ class Attention(nn.Module):
                                   ("o_proj", (self.hidden, self.heads*self.width), "residual_projection")):
             # ParameterDict gives the canonical '<projection>.weight' key.
             setattr(self, name, nn.ParameterDict({"weight": initialize_parameter(
-                ParameterSpec(f"{prefix}.{name}.weight", shape, "bfloat16", role), recipe, device=device)}))
-        self.q_norm = RMSNorm(config, recipe, name=f"{prefix}.q_norm.weight", device=device, head_kind="query")
-        self.k_norm = RMSNorm(config, recipe, name=f"{prefix}.k_norm.weight", device=device, head_kind="key")
+                ParameterSpec(f"{prefix}.{name}.weight", shape, "bfloat16", role), recipe, device=device, tensor_execution=tensor_execution)}))
+        self.q_norm = RMSNorm(config, recipe, name=f"{prefix}.q_norm.weight", device=device, head_kind="query", tensor_execution=tensor_execution)
+        self.k_norm = RMSNorm(config, recipe, name=f"{prefix}.k_norm.weight", device=device, head_kind="key", tensor_execution=tensor_execution)
         self.rope = RotaryEmbedding(config)
 
     def project(self, hidden, positions):
@@ -134,9 +135,10 @@ class Attention(nn.Module):
             raise ValueError("attention expects compact valid hidden [T,2560]")
         if hidden.dtype != self.q_proj["weight"].dtype or hidden.device != self.q_proj["weight"].device:
             raise ValueError("attention hidden dtype/device mismatch")
-        q = F.linear(hidden, self.q_proj["weight"]).reshape(-1, self.heads, self.width)
-        k = F.linear(hidden, self.k_proj["weight"]).reshape(-1, self.kv_heads, self.width)
-        v = F.linear(hidden, self.v_proj["weight"]).reshape(-1, self.kv_heads, self.width)
+        linear = F.linear if self.tensor_execution is None else self.tensor_execution.linear
+        q = linear(hidden, self.q_proj["weight"]).reshape(-1, self.heads, self.width)
+        k = linear(hidden, self.k_proj["weight"]).reshape(-1, self.kv_heads, self.width)
+        v = linear(hidden, self.v_proj["weight"]).reshape(-1, self.kv_heads, self.width)
         return self.rope(self.q_norm(q), positions), self.rope(self.k_norm(k), positions), v
 
     def attend(self, q, k, v, qpos, kpos, qseg, kseg):
@@ -151,7 +153,8 @@ class Attention(nn.Module):
         if not all(bool(torch.isfinite(t).all()) for t in (q,k,v)):
             raise FloatingPointError("nonfinite attention Q/K/V")
         output = _BlockwiseGQA.apply(q,k,v,qpos,kpos,qseg,kseg,self.qchunk,self.kchunk)
-        result = F.linear(output.to(q.dtype).reshape(q.shape[0], self.heads*self.width), self.o_proj["weight"])
+        linear = F.linear if self.tensor_execution is None else self.tensor_execution.linear
+        result = linear(output.to(q.dtype).reshape(q.shape[0], self.heads*self.width), self.o_proj["weight"])
         if not bool(torch.isfinite(result).all()):
             raise FloatingPointError("nonfinite attention output projection")
         return result

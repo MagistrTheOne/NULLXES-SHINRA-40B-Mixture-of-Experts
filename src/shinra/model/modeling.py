@@ -26,10 +26,18 @@ class ModelOutput:
 
 
 class ShinraForCausalLM(nn.Module):
-    def __init__(self, config: Configuration, *, device: str, expert_execution=None, context_execution=None):
+    def __init__(self, config: Configuration, *, device: str, expert_execution=None, context_execution=None, tensor_execution=None):
         super().__init__()
         require_operation(config, "model")
         recipe = InitializationRecipe.from_configuration(config)
+        self.tensor_execution = tensor_execution
+        if tensor_execution is not None:
+            from shinra.distributed.parallelism import TensorExecution
+            if not isinstance(tensor_execution, TensorExecution) or config.get("distributed.backend") != tensor_execution.group.backend:
+                raise ValueError("explicit TP group with matching configured backend required")
+            if expert_execution is not None or context_execution is not None:
+                raise ValueError("BLOCKED: mixed TP/EP/CP group ownership is not yet admitted")
+            tensor_execution.group.agree({"configuration": config.identity, "tp_ranks": tensor_execution.group.ranks}, device=device)
         if expert_execution is not None:
             from shinra.distributed.expert_parallel import ExpertExecution
             if not isinstance(expert_execution, ExpertExecution):
@@ -54,12 +62,12 @@ class ShinraForCausalLM(nn.Module):
         self.configuration_identity = config.identity
         self.rope_identity = hashlib.sha256(json.dumps(dict(config.get("rope")), sort_keys=True,
                                                        separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
-        self.embeddings = TokenEmbeddings(config, recipe, device=device)
+        self.embeddings = TokenEmbeddings(config, recipe, device=device, tensor_execution=tensor_execution)
         self.layers = nn.ModuleList(DecoderBlock(config, recipe, layer=i, device=device, expert_execution=expert_execution,
-                                                context_execution=context_execution)
+                                                context_execution=context_execution, tensor_execution=tensor_execution)
                                     for i in range(self.layer_count))
-        self.final_norm = RMSNorm(config, recipe, name="final_norm.weight", device=device)
-        self.lm_head = LanguageModelHead(config, recipe, device=device)
+        self.final_norm = RMSNorm(config, recipe, name="final_norm.weight", device=device, tensor_execution=tensor_execution)
+        self.lm_head = LanguageModelHead(config, recipe, device=device, tensor_execution=tensor_execution)
 
     def forward(self, token_ids: torch.Tensor, positions: torch.Tensor, segments: torch.Tensor,
                 token_uids: torch.Tensor, balancing_bias: torch.Tensor, *,
@@ -78,6 +86,14 @@ class ShinraForCausalLM(nn.Module):
             raise ValueError("expected balancing snapshots [48,128]")
         if replay_assignments is not None and len(replay_assignments) != self.layer_count:
             raise ValueError("recomputation requires assignments for all 48 layers")
+        if self.tensor_execution is not None:
+            self.tensor_execution.group.agree({"tokens": token_ids.detach().cpu().tolist(),
+                                               "positions": positions.detach().cpu().tolist(),
+                                               "segments": segments.detach().cpu().tolist(),
+                                               "uids": token_uids.detach().cpu().tolist(),
+                                               "bias": balancing_bias.detach().cpu().tolist(),
+                                               "replay": None if replay_assignments is None else
+                                               [value.detach().cpu().tolist() for value in replay_assignments]}, device=token_ids.device)
         if bool(((positions < 0) | (positions >= self.context) | (segments < 0)).any()):
             raise ValueError("position or segment ID outside allowed range")
         seen = set()

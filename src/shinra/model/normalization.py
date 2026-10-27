@@ -11,7 +11,7 @@ from shinra.core.validation import validate_architecture
 
 class RMSNorm(nn.Module):
     def __init__(self, config: Configuration, recipe: InitializationRecipe, *, name: str,
-                 device: str, head_kind: str | None = None):
+                 device: str, head_kind: str | None = None, tensor_execution=None):
         super().__init__()
         validate_architecture(config)
         m = config.get("model")
@@ -22,7 +22,7 @@ class RMSNorm(nn.Module):
             shape = (heads, m["head_dim"])
         else:
             raise ValueError("head_kind must be query, key or None")
-        self.weight = initialize_parameter(ParameterSpec(name, shape, "bfloat16", "norm"), recipe, device=device)
+        self.weight = initialize_parameter(ParameterSpec(name, shape, "bfloat16", "norm"), recipe, device=device, tensor_execution=tensor_execution)
         self.eps = m["rms_norm_eps"]
         self.normalized_shape = shape
 

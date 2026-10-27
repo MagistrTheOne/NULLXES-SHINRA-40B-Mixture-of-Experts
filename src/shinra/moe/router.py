@@ -19,7 +19,7 @@ class Routing:
 
 class Router(nn.Module):
     def __init__(self, config: Configuration, recipe: InitializationRecipe, *,
-                 layer: int, device: str):
+                 layer: int, device: str, tensor_execution=None):
         super().__init__()
         validate_architecture(config)
         m = config.get("model")
@@ -30,7 +30,7 @@ class Router(nn.Module):
         self.hidden = m["hidden_size"]
         spec = ParameterSpec(f"layers.{layer}.moe.router.weight",
                              (self.experts, self.hidden), "float32", "router")
-        self.weight = initialize_parameter(spec, recipe, device=device)
+        self.weight = initialize_parameter(spec, recipe, device=device, tensor_execution=tensor_execution)
 
     def forward(self, hidden: torch.Tensor, balancing_bias: torch.Tensor, *,
                 replay_ids: torch.Tensor | None = None) -> Routing:

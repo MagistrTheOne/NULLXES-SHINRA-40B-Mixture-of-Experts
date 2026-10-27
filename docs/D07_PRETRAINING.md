@@ -80,3 +80,7 @@ Source now includes full-vocabulary causal objective, FP32 master AdamW adapter,
 ## Order 008 source boundary
 
 DP/EP TrainingEngine now uses unique source partitions and owner-only expert gradients. Non-reentrant checkpoint replay disables early stop to preserve collective ordering. Resume is explicit through restore_training_set, after complete rank-set checks. CP model attention exists; CP training and TP assembly are incomplete. See ORDER_008_PROGRESS.md.
+
+## Order 009 continuation — 27.10.2026
+
+Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).

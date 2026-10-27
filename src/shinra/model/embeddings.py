@@ -9,16 +9,18 @@ from shinra.core.validation import validate_architecture
 
 
 class TokenEmbeddings(nn.Module):
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, device: str):
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, device: str, tensor_execution=None):
         super().__init__()
         validate_architecture(config)
+        self.tensor_execution = tensor_execution
         self.vocab_size = config.get("model.vocab_size")
         self.weight = initialize_parameter(ParameterSpec("embeddings.weight", (
-            self.vocab_size, config.get("model.hidden_size")), "bfloat16", "embedding"), recipe, device=device)
+            self.vocab_size, config.get("model.hidden_size")), "bfloat16", "embedding"), recipe, device=device, tensor_execution=tensor_execution)
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         if token_ids.dtype != torch.int64 or token_ids.device != self.weight.device:
             raise ValueError("embedding IDs must be int64 on the weight device")
         if bool(((token_ids < 0) | (token_ids >= self.vocab_size)).any()):
             raise ValueError("token ID outside vocabulary")
-        return F.embedding(token_ids, self.weight, padding_idx=None)
+        return (F.embedding(token_ids, self.weight, padding_idx=None) if self.tensor_execution is None
+                else self.tensor_execution.embedding(token_ids, self.weight))

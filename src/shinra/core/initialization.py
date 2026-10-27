@@ -92,12 +92,15 @@ def parameter_specs(config: Configuration) -> Iterator[ParameterSpec]:
     yield ParameterSpec("lm_head.weight", (v,d), "bfloat16", "output")
 
 
-def initialize_parameter(spec: ParameterSpec, recipe: InitializationRecipe, *, device: str):
+def initialize_parameter(spec: ParameterSpec, recipe: InitializationRecipe, *, device: str, tensor_execution=None):
     """Explicit runtime allocation; never called by import or configuration parsing.
 
     Full logical tensors only. Partition-invariant initialization is not claimed.
     """
     import torch
+
+    if tensor_execution is not None:
+        return tensor_execution.initialize(spec, recipe, device=device)
 
     if not device or device == "meta":
         raise ConfigurationError("initialization.device", "explicit real device required")

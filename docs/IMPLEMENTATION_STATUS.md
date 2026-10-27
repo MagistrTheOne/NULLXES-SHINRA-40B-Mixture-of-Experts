@@ -27,3 +27,7 @@ Complete-state resume now has explicit DP/EP producer, set-publication and resto
 ## NOT EXECUTED
 
 No model initialization, forward/backward, training, inference, checkpoint round-trip, tokenizer training, tests, downloads, installation, deployment or GPU planning. No runtime readiness claim.
+
+## Order 009 continuation — 27.10.2026
+
+Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).

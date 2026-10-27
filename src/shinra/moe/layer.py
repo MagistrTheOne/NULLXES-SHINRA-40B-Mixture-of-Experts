@@ -13,17 +13,17 @@ from .experts import Expert
 
 class MoELayer(nn.Module):
     """Fixed 128-expert logical MoE, with explicit optional EP ownership/transport."""
-    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str, expert_execution=None):
+    def __init__(self, config: Configuration, recipe: InitializationRecipe, *, layer: int, device: str, expert_execution=None, tensor_execution=None):
         super().__init__()
         validate_architecture(config)
         self.chunk = config.get("moe.chunk_tokens")
         if self.chunk is None:
             raise ConfigurationError("moe.chunk_tokens", "explicit chunk size required")
-        self.router = Router(config, recipe, layer=layer, device=device)
+        self.router = Router(config, recipe, layer=layer, device=device, tensor_execution=tensor_execution)
         self.layer, self.expert_execution = layer, expert_execution
         self.num_experts = config.get("model.num_routed_experts")
         owned = range(self.num_experts) if expert_execution is None else expert_execution.local_experts(layer)
-        self.experts = nn.ModuleDict({str(e): Expert(config, recipe, layer=layer, expert_id=e, device=device)
+        self.experts = nn.ModuleDict({str(e): Expert(config, recipe, layer=layer, expert_id=e, device=device, tensor_execution=tensor_execution)
                                       for e in owned})
 
     def forward(self, hidden: torch.Tensor, token_uids: torch.Tensor, balancing_bias: torch.Tensor,

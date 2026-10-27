@@ -121,3 +121,7 @@ Actual GM compatibility, numerical execution, storage durability, complete distr
 ## Order 008 current override
 
 EP ownership now reaches canonical model/MoE/training modules. CP reaches model attention. Complete-set DP/EP restore and publication source exists in existing checkpoint modules. Earlier absent-integration statements describe Order 007; TP and CP training remain outstanding. No duplicate model files or additional packages created.
+
+## Order 009 continuation — 27.10.2026
+
+Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).

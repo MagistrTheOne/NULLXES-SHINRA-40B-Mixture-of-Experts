@@ -86,7 +86,8 @@ class ContextExecution:
         output = context_attention(q, k, v, positions, positions, segments, segments,
                                    sizes=self.sizes(k), group=self.group,
                                    query_chunk=attention.qchunk, key_chunk=attention.kchunk)
-        result = torch.nn.functional.linear(output.to(q.dtype).reshape(q.shape[0], 4096), attention.o_proj["weight"])
+        linear = torch.nn.functional.linear if attention.tensor_execution is None else attention.tensor_execution.linear
+        result = linear(output.to(q.dtype).reshape(q.shape[0], 4096), attention.o_proj["weight"])
         if not bool(torch.isfinite(result).all()):
             raise FloatingPointError("nonfinite context attention output")
         return result

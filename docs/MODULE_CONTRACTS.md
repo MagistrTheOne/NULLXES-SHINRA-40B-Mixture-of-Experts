@@ -59,3 +59,7 @@ Index metadata.total_size = sum(TensorRecord.nbytes), excluding headers. FileRec
 ## Order 008 continuation — 26.10.2026
 
 ExpertExecution now connects ownership/transport to canonical MoELayer and TrainingEngine. ModuleDict preserves logical expert names; only owned experts are materialized. DP/EP synchronization excludes owner expert gradients from repeated SUM. Global clipping counts replicas once. ContextExecution connects global positions/segments to model attention; CP training remains blocked. publish_training_set and restore_training_set provide explicit complete-set DP/EP checkpoint admission/restoration. Failure leaves RECOVERY_REQUIRED, not a rollback claim. See ORDER_008_PROGRESS.md for exact limitations.
+
+## Order 009 continuation — 27.10.2026
+
+Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).

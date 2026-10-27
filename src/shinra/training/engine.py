@@ -65,6 +65,8 @@ def training_forward(model, batch, bias, *, recomputation: bool):
 class TrainingEngine:
     def __init__(self, config, model, optimizer, scheduler, balances, stream, state, group: Group, telemetry):
         require_operation(config, "train")
+        if model.tensor_execution is not None:
+            raise ValueError("BLOCKED: TP replica-aware training state and shard checkpoint integration are incomplete")
         validate_model_precision(model)
         if model.context_execution is not None:
             raise ValueError("BLOCKED: context-sharded loss targets and stream cursor coordinator are not yet integrated")
