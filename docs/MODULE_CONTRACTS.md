@@ -63,3 +63,10 @@ ExpertExecution now connects ownership/transport to canonical MoELayer and Train
 ## Order 009 continuation — 27.10.2026
 
 Canonical TP model source and full-logical-stream slice initialization are now implemented, with explicitly replicated router/norms. CP real-target boundary partitioning and summed objective added. TP training/checkpoint integration, full CP training, uneven EP scheduling and mixed-group orchestration remain incomplete and fail closed where exposed. Source Complete is NOT achieved. No model/test/checkpoint execution. Details and changed files: [Order 009 report](ORDER_009_DISTRIBUTED_COMPLETION.md).
+
+
+## Current mixed integration — 27.10.2026
+
+Supersedes earlier incomplete-integration status entries above: canonical TP, CP training with real boundary targets, uneven EP zero-work participation, explicit mixed-group gradient/clip ownership and mixed Safetensors snapshot/publication/resume are implemented in existing modules. ParallelLayout and MixedExecution require approved logical ownership and caller-created real groups; no topology or operational defaults are supplied. Source replicas agree on availability, content and pending cursors; TP copies do not inflate counts. Post-mutation failure requires complete recovery and group restart.
+
+Distributed runtime correctness and actual GM compatibility are UNVERIFIED; execution remains blocked on approved operational settings, corpus/tokenizer, initialization and storage contracts. Resident single-sequence inference remains separate and does not silently load/repartition mixed shards. Detailed source contracts, changed files and limitations: [Order 009 update](ORDER_009_DISTRIBUTED_COMPLETION.md#mixed-integration-update--27102026). Historical audit reports remain unchanged. No model or tests executed.

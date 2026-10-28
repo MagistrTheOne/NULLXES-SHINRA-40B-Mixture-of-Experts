@@ -46,7 +46,7 @@ class MasterOptimizer:
             parameter.grad = None
 
     def install_gradients(self, gradients: dict[str, torch.Tensor], *, global_tokens: int, max_norm: float,
-                          group=None, owned_names=frozenset()):
+                          group=None, owned_names=frozenset(), unique_names=None):
         if type(global_tokens) is not int or global_tokens <= 0:
             raise ValueError("global loss target count must be positive")
         if set(gradients) != set(self.masters):
@@ -55,6 +55,8 @@ class MasterOptimizer:
             value = gradients[name]
             if value.dtype != torch.float32 or value.shape != master.shape or value.device != master.device:
                 raise ValueError("FP32 gradient shape/device mismatch")
+            if not bool(torch.isfinite(value).all()):
+                raise FloatingPointError("nonfinite synchronized gradient: " + name)
             master.grad = value / global_tokens
         if group is not None:
             # Replicated non-expert tensors count once, owner expert tensors
@@ -62,7 +64,8 @@ class MasterOptimizer:
             device = next(iter(self.masters.values())).device
             square = torch.zeros((), dtype=torch.float64, device=device)
             for name, master in self.masters.items():
-                if name in owned_names or group.rank == 0:
+                selected = name in unique_names if unique_names is not None else (name in owned_names or group.rank == 0)
+                if selected:
                     square += master.grad.double().square().sum()
             norm = group.sum(square).sqrt()
             if not bool(torch.isfinite(norm)):

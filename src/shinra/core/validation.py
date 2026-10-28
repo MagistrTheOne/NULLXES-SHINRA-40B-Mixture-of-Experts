@@ -244,3 +244,13 @@ def require_operation(config: Configuration, operation: str) -> None:
     blockers = operation_blockers(config, operation)
     if blockers:
         raise ConfigurationError(operation, "; ".join(blockers))
+
+
+def training_sequence_budget(config: Configuration) -> int:
+    """Approved per-source GLOBAL sequence budget, before CP partitioning."""
+    budget = config.get("training.microbatch_tokens")
+    capacity = config.get("model.max_position_embeddings")
+    if type(budget) is not int or not 1 <= budget <= capacity:
+        raise ConfigurationError("training.microbatch_tokens",
+                                 "explicit positive global sequence budget within architectural context required")
+    return budget

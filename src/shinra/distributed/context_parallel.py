@@ -17,8 +17,9 @@ class _Gather(torch.autograd.Function):
         if len(sizes) != group.size or any(type(n) is not int or n < 0 for n in sizes) or value.shape[0] != sizes[group.rank]:
             raise ValueError("context shard lengths mismatch")
         maximum = max(sizes)
+        ctx.sizes, ctx.group = sizes, group
         if maximum == 0:
-            raise ValueError("global context cannot be empty")
+            return value.clone()
         padded = value.new_zeros((maximum, *value.shape[1:]))
         padded[:value.shape[0]].copy_(value)
         gathered = [torch.empty_like(padded) for _ in sizes]
@@ -29,7 +30,8 @@ class _Gather(torch.autograd.Function):
     @staticmethod
     def backward(ctx, gradient):
         gradient = gradient.contiguous().clone()
-        dist.all_reduce(gradient, op=dist.ReduceOp.SUM, group=ctx.group.process_group)
+        if gradient.numel():
+            dist.all_reduce(gradient, op=dist.ReduceOp.SUM, group=ctx.group.process_group)
         start = sum(ctx.sizes[:ctx.group.rank])
         return gradient[start:start+ctx.sizes[ctx.group.rank]], None, None
 
@@ -69,14 +71,21 @@ class ContextExecution:
         lengths = [torch.empty_like(length) for _ in self.group.ranks]
         dist.all_gather(lengths, length, group=self.group.process_group)
         sizes = tuple(int(x.item()) for x in lengths)
-        if any(n <= 0 for n in sizes):
-            raise ValueError("this context adapter requires nonempty contiguous partitions")
+        if any(n < 0 for n in sizes):
+            raise ValueError("negative context partition length")
         return sizes
 
-    def metadata(self, positions, segments, token_uids):
+    def metadata(self, positions, segments, token_uids, *, context_range):
         sizes = self.sizes(positions)
         if sum(sizes) > 262144:
             raise ValueError("global packed context exceeds architectural limit")
+        total = sum(sizes)
+        offsets = tuple(total*i//self.group.size for i in range(self.group.size+1))
+        if (sizes != tuple(b-a for a,b in zip(offsets, offsets[1:])) or
+                not isinstance(context_range, tuple) or len(context_range) != 3 or
+                any(type(v) is not int for v in context_range) or
+                context_range != (offsets[self.group.rank], offsets[self.group.rank+1], total)):
+            raise ValueError("context shard does not own its declared global prediction range")
         combined = _Gather.apply(torch.stack((positions, segments, token_uids), dim=1), sizes, self.group)
         if combined[:, 2].unique().numel() != combined.shape[0]:
             raise ValueError("context partitions overlap in token identity")

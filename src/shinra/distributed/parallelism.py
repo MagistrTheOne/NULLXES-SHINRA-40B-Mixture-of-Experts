@@ -30,7 +30,8 @@ class _Copy(torch.autograd.Function):
     @staticmethod
     def backward(ctx, gradient):
         result = gradient.contiguous().clone()
-        dist.all_reduce(result, op=dist.ReduceOp.SUM, group=ctx.group.process_group)
+        if result.numel():
+            dist.all_reduce(result, op=dist.ReduceOp.SUM, group=ctx.group.process_group)
         return result, None
 
 
@@ -89,6 +90,9 @@ class _GatherFeatures(torch.autograd.Function):
     @staticmethod
     def forward(ctx, value, group):
         group.validate_device(value)
+        ctx.group, ctx.width = group, value.shape[-1]
+        if value.numel() == 0:
+            return value.new_empty((*value.shape[:-1], value.shape[-1]*group.size))
         parts = [torch.empty_like(value) for _ in group.ranks]
         dist.all_gather(parts, value.contiguous(), group=group.process_group)
         ctx.group, ctx.width = group, value.shape[-1]
@@ -170,3 +174,59 @@ class TensorExecution:
                 entry = {"logical_shape": list(spec.shape), "axis": partition.axis, "start": start, "stop": stop}
             result[spec.name] = {**entry, "local_shape": shape, "dtype": spec.dtype}
         return result
+
+
+class MixedExecution:
+    """Validated caller-provided groups; never creates or guesses a topology."""
+    def __init__(self, layout, groups):
+        from .ownership import ParallelLayout, ExpertOwnership
+        from .expert_parallel import ExpertExecution
+        from .context_parallel import ContextExecution
+        roles = {"world", "tensor", "expert", "context", "shared_parameters", "expert_parameters", "source_replicas"}
+        if not isinstance(layout, ParallelLayout) or set(groups) != roles or any(not isinstance(g, Group) for g in groups.values()):
+            raise ValueError("all explicit logical process groups are required, including singleton groups")
+        rank = dist.get_rank()
+        for role, group in groups.items():
+            if group.ranks != layout.members(rank, role):
+                raise ValueError("process-group membership/order differs from logical layout: " + role)
+        if len({g.backend for g in groups.values()}) != 1:
+            raise ValueError("mixed backend policy is not admitted")
+        self.layout, self.groups, self.rank = layout, dict(groups), rank
+        self.coordinate = layout.coordinates[layout.ranks.index(rank)]
+        self.tensor = TensorExecution(groups["tensor"]) if layout.dimensions[3] > 1 else None
+        ownership = ExpertOwnership(layout.expert_owners, layout.dimensions[1], layout.approval_reference)
+        self.expert = ExpertExecution(ownership, groups["expert"]) if layout.dimensions[1] > 1 else None
+        self.context = ContextExecution(groups["context"]) if layout.dimensions[2] > 1 else None
+
+    def replica_group(self, name):
+        return self.groups["expert_parameters" if ".moe.experts." in name else "shared_parameters"]
+
+    def unique_names(self, inventory):
+        return frozenset(name for name, spec in inventory.items()
+                         if self.replica_group(name).rank == 0 and (spec["axis"] is not None or self.coordinate[3] == 0))
+
+    def gradients(self, parameters, accumulated):
+        result = {}
+        if not set(accumulated).issubset(parameters): raise ValueError("unknown gradient owner")
+        for name, parameter in sorted(parameters.items()):
+            value = accumulated.get(name)
+            if value is None: value = torch.zeros_like(parameter, dtype=torch.float32)
+            if value.shape != parameter.shape or value.dtype != torch.float32:
+                raise ValueError("gradient shard shape/precision mismatch")
+            result[name] = self.replica_group(name).sum(value)
+        return result
+
+    def split_batch(self, batch, *, tokenizer_identity, manifest_identity, device):
+        from shinra.data.packing import ContextBatch, partition_context_batch
+        from dataclasses import asdict
+        source = self.groups["source_replicas"]
+        source.agree(None if batch is None else asdict(batch), device=device)
+        if batch is None:
+            return ContextBatch((), (), (), (), (), (), tokenizer_identity, manifest_identity, 0, 0, 0)
+        n, degree = len(batch.token_ids), self.layout.dimensions[2]
+        offsets = tuple(n*i//degree for i in range(degree+1))
+        return partition_context_batch(batch, offsets, self.coordinate[2])
+
+    def ownership_metadata(self):
+        return {"mode": "mixed", "ranks": list(self.layout.ranks), "rank": self.groups["world"].rank,
+                "layout": self.layout.to_dict(), "layout_identity": self.layout.identity}

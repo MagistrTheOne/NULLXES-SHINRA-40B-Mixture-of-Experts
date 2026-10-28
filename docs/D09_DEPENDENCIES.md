@@ -47,3 +47,8 @@ No new external dependency added. New algorithms use stdlib and the externally m
 ## Order 008 API review — 26.10.2026
 
 Rechecked [PyTorch checkpoint 2.14](https://docs.pytorch.org/docs/2.14/checkpoint.html) and [distributed 2.14](https://docs.pytorch.org/docs/2.14/distributed.html). set_checkpoint_early_stop(False) surrounds original checkpoint forward; explicit collectives remain caller-group owned. Actual GM compatibility remains UNKNOWN; no dependency added or installed.
+
+
+## Order 009 transport API review — 27.10.2026
+
+Official [PyTorch distributed 2.14 documentation](https://docs.pytorch.org/docs/2.14/distributed.html) reviewed for all_gather/all_reduce/broadcast, isend/irecv and Work.wait. P2P src/dst use global ranks with explicit process groups; NCCL tags are not used. All sends are waited before crossing to another group. Caller must create groups in consistent order and select the actual current CUDA device before NCCL operations; Group validates tensor/current-device agreement. Gloo adapter admits CPU only. Nonempty payload edges avoid assuming zero-count P2P support. Native custom autograd reverses EP transport and implements CP/TP adjoints; this is source semantics, not backend certification. Actual installed GM version, backend behavior and timeout/restart behavior remain UNKNOWN. No new dependency or installation.

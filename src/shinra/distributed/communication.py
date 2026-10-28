@@ -33,6 +33,8 @@ class Group:
     def validate_device(self, tensor):
         if self.backend == "nccl" and tensor.device.type != "cuda":
             raise ValueError("NCCL tensors must be on an explicitly selected CUDA device")
+        if self.backend == "nccl" and tensor.device.index != torch.cuda.current_device():
+            raise ValueError("caller must select the tensor CUDA device before NCCL operations")
         if self.backend == "gloo" and tensor.device.type != "cpu":
             raise RuntimeError("BLOCKED: this Gloo adapter admits CPU tensors only")
 
@@ -65,26 +67,45 @@ class Group:
         return torch.tensor(values, dtype=torch.int64, device=tensor.device).reshape(tensor.shape)
 
 
+def _transfer(value, send_sizes, receive_sizes, group):
+    """Ordered nonempty P2P edges; no reliance on zero-count payload support."""
+    group.validate_device(value)
+    if (len(send_sizes) != group.size or len(receive_sizes) != group.size or
+            any(type(n) is not int or n < 0 for n in (*send_sizes,*receive_sizes)) or sum(send_sizes) != value.shape[0]):
+        raise ValueError("invalid assignment exchange sizes")
+    admitted = exchange_sizes(torch.tensor(send_sizes, dtype=torch.int64, device=value.device), group)
+    if admitted != tuple(receive_sizes): raise ValueError("receive inventory differs from actual send counts")
+    result = value.new_empty((sum(receive_sizes), *value.shape[1:]))
+    send_offsets = [sum(send_sizes[:i]) for i in range(group.size)]
+    recv_offsets = [sum(receive_sizes[:i]) for i in range(group.size)]
+    for source in range(group.size):
+        for destination in range(group.size):
+            if source == destination == group.rank:
+                n = send_sizes[destination]
+                if n: result[recv_offsets[source]:recv_offsets[source]+n].copy_(value[send_offsets[destination]:send_offsets[destination]+n])
+            elif group.rank == source and send_sizes[destination]:
+                payload = value[send_offsets[destination]:send_offsets[destination]+send_sizes[destination]].contiguous()
+                dist.isend(payload, dst=group.ranks[destination], group=group.process_group).wait()
+            elif group.rank == destination and receive_sizes[source]:
+                target = result[recv_offsets[source]:recv_offsets[source]+receive_sizes[source]]
+                dist.irecv(target, src=group.ranks[source], group=group.process_group).wait()
+    # Zero-work members must not enter another group while peers still execute
+    # this exchange. This is a real control collective, not a training token.
+    completed = group.integer_sum(torch.ones((), dtype=torch.int64, device=value.device))
+    if completed.item() != group.size:
+        raise RuntimeError("incomplete expert exchange participation")
+    return result
+
+
 class _AllToAll(torch.autograd.Function):
     @staticmethod
     def forward(ctx, value, send_sizes, receive_sizes, group):
-        group.validate_device(value)
-        if len(send_sizes) != group.size or len(receive_sizes) != group.size or sum(send_sizes) != value.shape[0]:
-            raise ValueError("all-to-all split contract mismatch")
-        if any(type(n) is not int or n < 0 for n in (*send_sizes, *receive_sizes)):
-            raise ValueError("invalid all-to-all split size")
-        result = value.new_empty((sum(receive_sizes), *value.shape[1:]))
-        dist.all_to_all_single(result, value.contiguous(), output_split_sizes=list(receive_sizes),
-                               input_split_sizes=list(send_sizes), group=group.process_group)
         ctx.send_sizes, ctx.receive_sizes, ctx.group = send_sizes, receive_sizes, group
-        return result
+        return _transfer(value, send_sizes, receive_sizes, group)
 
     @staticmethod
     def backward(ctx, gradient):
-        result = gradient.new_empty((sum(ctx.send_sizes), *gradient.shape[1:]))
-        dist.all_to_all_single(result, gradient.contiguous(), output_split_sizes=list(ctx.send_sizes),
-                               input_split_sizes=list(ctx.receive_sizes), group=ctx.group.process_group)
-        return result, None, None, None
+        return _transfer(gradient, ctx.receive_sizes, ctx.send_sizes, ctx.group), None, None, None
 
 
 def exchange(value, send_sizes: tuple[int, ...], receive_sizes: tuple[int, ...], group: Group):
@@ -95,6 +116,7 @@ def exchange_sizes(send_sizes: torch.Tensor, group: Group) -> tuple[int, ...]:
     group.validate_device(send_sizes)
     if send_sizes.dtype != torch.int64 or send_sizes.shape != (group.size,):
         raise ValueError("expected int64 per-owner assignment counts")
-    receive = torch.empty_like(send_sizes)
-    dist.all_to_all_single(receive, send_sizes.contiguous(), group=group.process_group)
-    return tuple(receive.cpu().tolist())
+    if bool((send_sizes < 0).any()): raise ValueError("negative assignment count")
+    rows = [torch.empty_like(send_sizes) for _ in group.ranks]
+    dist.all_gather(rows, send_sizes.contiguous(), group=group.process_group)
+    return tuple(int(row[group.rank].item()) for row in rows)

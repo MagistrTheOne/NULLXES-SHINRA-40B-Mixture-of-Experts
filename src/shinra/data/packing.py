@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 from shinra.core.configuration import Configuration
-from shinra.core.validation import require_operation
+from shinra.core.validation import require_operation, training_sequence_budget
 from shinra.tokenizer.serialization import TokenizerArtifact
 from .provenance import Document
 
@@ -35,7 +35,8 @@ class DocumentPacker:
         self.tokenizer = artifact.tokenizer
         self.tokenizer_identity = artifact.identity
         self.manifest_identity = config.get("data.manifest_identity")
-        self.capacity = config.get("model.max_position_embeddings")
+        self.context_capacity = config.get("model.max_position_embeddings")
+        self.capacity = training_sequence_budget(config)
         registry = self.tokenizer.vocabulary.registry
         self.bos, self.eos, self.separator = (registry.token(n) for n in ("bos", "eos", "doc_sep"))
 
@@ -46,12 +47,16 @@ class DocumentPacker:
             raise ValueError("explicit nonnegative document ordinal required")
         tokens = (self.bos, *self.tokenizer.encode_bytes(document.payload), self.eos)
         if len(tokens) > self.capacity:
-            raise ValueError("document exceeds context including BOS/EOS; approved split policy required")
+            raise ValueError(f"BLOCKED: document {document.record.source_id}/{document.record.document_id} "
+                             f"at ordinal {ordinal} requires {len(tokens)} tokens including BOS/EOS, "
+                             f"global microbatch budget is {self.capacity}; segmented continuation is not approved")
         return Segment(document.record.document_id, document.record.source_id, ordinal, tokens)
 
     def pack(self, segments: tuple[Segment, ...]) -> PackedBatch:
         if not segments:
             raise ValueError("cannot produce empty packed batch")
+        if sum(len(s.tokens) for s in segments) + len(segments) - 1 > self.capacity:
+            raise ValueError("global microbatch token budget exceeded before batch materialization")
         tokens, positions, identifiers, uids = [], [], [], []
         seen = set()
         for segment in segments:
@@ -64,15 +69,16 @@ class DocumentPacker:
                 identifiers.append(identifiers[-1])
                 uids.append(uids[-1] + 1)
             for position, token in enumerate(segment.tokens):
-                uid = segment.ordinal * self.capacity + position
+                # UID identity must not change when the operational budget changes.
+                uid = segment.ordinal * self.context_capacity + position
                 if uid >= 2**63:
                     raise OverflowError("stable token UID exceeds int64")
                 tokens.append(token)
                 positions.append(position)
                 identifiers.append(segment.ordinal)
                 uids.append(uid)
-        if len(tokens) > self.capacity or max(positions) >= self.capacity:
-            raise ValueError("packed context exceeds architectural range")
+        if len(tokens) > self.capacity or max(positions) >= self.context_capacity:
+            raise ValueError("packed context exceeds global microbatch budget or architectural range")
         loss = tuple(identifiers[i] == identifiers[i+1] and tokens[i+1] != self.separator
                      for i in range(len(tokens)-1))
         return PackedBatch(tuple(tokens), tuple(positions), tuple(identifiers), tuple(uids), loss,
@@ -105,8 +111,8 @@ def partition_context_batch(batch: PackedBatch, offsets: tuple[int, ...], rank: 
     size = len(batch.token_ids)
     if (type(rank) is not int or not 0 <= rank < len(offsets)-1 or
             any(type(n) is not int for n in offsets) or offsets[0] != 0 or offsets[-1] != size or
-            any(a >= b for a,b in zip(offsets, offsets[1:]))):
-        raise ValueError("explicit nonempty contiguous context partitions must cover packed tokens")
+            any(a > b for a,b in zip(offsets, offsets[1:]))):
+        raise ValueError("explicit contiguous context partitions must cover packed tokens")
     if size > 262144 or any(len(v) != size for v in (batch.positions, batch.segment_ids, batch.token_uids)) or len(batch.loss_mask) != max(size-1, 0):
         raise ValueError("invalid packed context shapes")
     if any(type(v) is not bool for v in batch.loss_mask):

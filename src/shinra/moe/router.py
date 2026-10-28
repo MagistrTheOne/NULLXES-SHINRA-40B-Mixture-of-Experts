@@ -28,6 +28,7 @@ class Router(nn.Module):
         self.experts = m["num_routed_experts"]
         self.top_k = m["num_experts_per_tok"]
         self.hidden = m["hidden_size"]
+        self.tensor_execution = tensor_execution
         spec = ParameterSpec(f"layers.{layer}.moe.router.weight",
                              (self.experts, self.hidden), "float32", "router")
         self.weight = initialize_parameter(spec, recipe, device=device, tensor_execution=tensor_execution)
@@ -78,4 +79,10 @@ class Router(nn.Module):
             weights = numerator / denominator
             if not bool(torch.isfinite(weights).all()) or bool((denominator <= 0).any()):
                 raise FloatingPointError("invalid selected-logit softmax")
+        if self.tensor_execution is not None:
+            # Identical assignments are a prerequisite for the per-expert TP
+            # collective schedule, including during full block recomputation.
+            self.tensor_execution.group.agree(
+                {"ids": ids.detach().cpu().tolist(), "weights": weights.detach().cpu().tolist()},
+                device=hidden.device)
         return Routing(ids, weights)

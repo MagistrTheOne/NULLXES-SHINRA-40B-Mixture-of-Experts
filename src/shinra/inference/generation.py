@@ -25,6 +25,10 @@ def generate(model, artifact: TokenizerArtifact, config, prompt: tuple[int, ...]
         raise ValueError("native tokenizer identity mismatch")
     if getattr(model, "checkpoint_identity", None) != checkpoint_identity or model.configuration_identity != config.identity:
         raise ValueError("loaded model identity mismatch")
+    restored_bias = getattr(model, "inference_balancing_bias", None)
+    if restored_bias is not None and (balancing_bias.dtype != restored_bias.dtype or
+            balancing_bias.device != restored_bias.device or not torch.equal(balancing_bias, restored_bias)):
+        raise ValueError("generation balancing state differs from reconstructed committed checkpoint")
     maximum = config.get("model.max_position_embeddings")
     if not prompt or len(prompt) > maximum or any(type(t) is not int or not 0 <= t < 131072 for t in prompt):
         raise ValueError("invalid prompt; no implicit truncation")

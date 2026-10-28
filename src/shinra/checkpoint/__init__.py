@@ -1,7 +1,7 @@
 """Safetensors-only checkpoint contracts; importing performs no I/O."""
 
 from .manifest import CheckpointError, CheckpointManifest, read_manifest
-from .recovery import load_checkpoint, restore_module_state
+from .recovery import load_checkpoint, restore_module_state, restore_training_set, load_resident_from_training_set
 from .serialization import (
     OptimizerSnapshot,
     TensorSpec,
@@ -16,6 +16,9 @@ from .transactions import (
     publish_checkpoint,
     recover_checkpoint,
     write_checkpoint,
+    write_training_snapshot,
+    publish_training_set,
+    read_training_set,
 )
 
 __all__ = (
@@ -35,4 +38,9 @@ __all__ = (
     "restore_optimizer_state",
     "tensor_inventory",
     "write_checkpoint",
+    "write_training_snapshot",
+    "publish_training_set",
+    "read_training_set",
+    "restore_training_set",
+    "load_resident_from_training_set",
 )

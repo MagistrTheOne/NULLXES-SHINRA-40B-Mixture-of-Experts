@@ -381,7 +381,10 @@ def write_training_snapshot(engine, root: str | Path, *, transaction_id: str,
     dtype_names = {"bfloat16": "BF16", "float32": "F32"}
     model_expected = {spec.name: TensorSpec(spec.shape, dtype_names[spec.dtype]) for spec in parameter_specs(engine.config)}
     execution = engine.model.expert_execution
-    if execution is not None:
+    if engine.parallel is not None:
+        model_expected = {name: TensorSpec(tuple(spec["local_shape"]), dtype_names[spec["dtype"]])
+                          for name, spec in engine.parameter_layout.items()}
+    elif execution is not None:
         model_expected = {name: spec for name, spec in model_expected.items()
                           if ".moe.experts." not in name or
                           execution.ownership.owners[int(name.split(".")[1])][int(name.split(".")[4])] == engine.group.rank}
@@ -400,7 +403,11 @@ def write_training_snapshot(engine, root: str | Path, *, transaction_id: str,
         "source_revision": source_revision, "state_schema_version": 1, "state_phase": "COMMITTED",
         "committed_step": progress["successful_step"], "balancing": balancing_metadata,
         "rng_devices": list(rng_devices),
+        "corpus_documents": len(engine.stream.reader.manifest.documents),
     }
+    if engine.parallel is not None:
+        metadata["ownership"] = engine.parallel.ownership_metadata()
+        metadata["parameter_layout"] = engine.parameter_layout
     return write_checkpoint(root, transaction_id=transaction_id, purpose="training_resume",
                             successful_step=progress["successful_step"], config_identity=engine.config.identity,
                             architecture_identity=engine.config.architecture_identity, tensor_groups=groups,
@@ -408,15 +415,36 @@ def write_training_snapshot(engine, root: str | Path, *, transaction_id: str,
                             metadata=metadata, max_shard_bytes=max_shard_bytes)
 
 
-def _training_set_members(root, transaction_ids, *, config_identity, architecture_identity, ranks):
+def _training_set_members(root, transaction_ids, *, config_identity, architecture_identity, ranks, configuration=None):
+    from shinra.core.initialization import parameter_specs
+    from shinra.distributed.ownership import ExpertOwnership
+    if configuration is None or configuration.identity != config_identity or configuration.architecture_identity != architecture_identity:
+        raise CheckpointError("complete-set publication requires the exact source configuration")
     if not transaction_ids or len(transaction_ids) != len(ranks) or len(set(transaction_ids)) != len(transaction_ids):
         raise CheckpointError("one unique transaction per logical rank is required")
     manifests = tuple(recover_checkpoint(root, tx, config_identity=config_identity,
                                         architecture_identity=architecture_identity) for tx in transaction_ids)
     shared_fields = ("training_progress", "scheduler_state", "tokenizer_identity", "corpus_manifest_identity",
-                     "precision_policy", "state_schema_version", "state_phase", "committed_step", "balancing", "source_revision")
+                     "precision_policy", "state_schema_version", "state_phase", "committed_step", "balancing", "source_revision",
+                     "corpus_documents")
     first = manifests[0]
     ownership = first.metadata["ownership"]
+    layout = None
+    expert_ownership = None
+    if ownership.get("mode") == "expert_parallel":
+        expert_ownership = ExpertOwnership.from_manifest(configuration.get("distributed.ownership_manifest"))
+        if expert_ownership.members != len(ranks) or expert_ownership.identity != ownership.get("expert_identity"):
+            raise CheckpointError("EP snapshot differs from approved expert ownership")
+    if ownership.get("mode") == "full_replica_dp" and ownership.get("expert_identity") is not None:
+        raise CheckpointError("DP snapshot cannot declare owner-sharded experts")
+    if ownership.get("mode") == "mixed":
+        from shinra.distributed.ownership import ParallelLayout
+        if configuration is None or configuration.identity != config_identity or configuration.architecture_identity != architecture_identity:
+            raise CheckpointError("mixed publication requires the exact admitted configuration")
+        layout = ParallelLayout(**ownership["layout"])
+        admitted = ParallelLayout.from_manifest(configuration.get("distributed.ownership_manifest"))
+        if layout.identity != admitted.identity or ownership["layout_identity"] != layout.identity or layout.ranks != tuple(ranks):
+            raise CheckpointError("mixed checkpoint layout differs from approved ownership")
     for rank, manifest in enumerate(manifests):
         if manifest.purpose != "training_resume" or set(manifest.groups) != {"model", "optimizer", "master", "router", "rng"}:
             raise CheckpointError("complete model/optimizer/master/router/RNG transaction required")
@@ -424,10 +452,34 @@ def _training_set_members(root, transaction_ids, *, config_identity, architectur
             raise CheckpointError("all training tensor groups must be required")
         if any(field not in manifest.metadata or manifest.metadata[field] != first.metadata.get(field) for field in shared_fields):
             raise CheckpointError("rank snapshots belong to different committed training versions")
+        if (manifest.metadata["optimizer"]["optimizer_type"] != first.metadata["optimizer"]["optimizer_type"] or
+                [g["options"] for g in manifest.metadata["optimizer"]["parameter_groups"]] !=
+                [g["options"] for g in first.metadata["optimizer"]["parameter_groups"]]):
+            raise CheckpointError("rank optimizer algorithms or coefficients differ")
         saved = manifest.metadata["ownership"]
-        if set(saved) != {"mode", "ranks", "rank", "expert_identity"} or saved != {**ownership, "rank": rank} or saved["ranks"] != list(ranks):
+        fields = {"mode", "ranks", "rank", "expert_identity"} if layout is None else {"mode", "ranks", "rank", "layout", "layout_identity"}
+        if set(saved) != fields or saved != {**ownership, "rank": rank} or saved["ranks"] != list(ranks):
             raise CheckpointError("rank ownership mismatch")
-        if saved["mode"] not in ("full_replica_dp", "expert_parallel"):
+        if layout is not None:
+            expected_layout = layout.inventory(configuration, ranks[rank])
+            if manifest.metadata.get("parameter_layout") != expected_layout:
+                raise CheckpointError("rank tensor slice inventory differs from logical ownership")
+            for kind in ("model", "master"):
+                actual = {r.name: (r.shape, r.dtype) for r in manifest.groups[kind].records}
+                expected = {n: (tuple(v["local_shape"]), "F32" if kind == "master" or v["dtype"] == "float32" else "BF16") for n,v in expected_layout.items()}
+                if actual != expected: raise CheckpointError("rank tensor shard shapes/dtypes differ from declared slices")
+            model_inventory = {n: TensorSpec(tuple(v["local_shape"]), "F32" if v["dtype"] == "float32" else "BF16")
+                               for n,v in expected_layout.items()}
+        else:
+            model_inventory = {}
+            for spec in parameter_specs(configuration):
+                if expert_ownership is not None and ".moe.experts." in spec.name:
+                    parts = spec.name.split(".")
+                    if expert_ownership.owners[int(parts[1])][int(parts[4])] != rank:
+                        continue
+                model_inventory[spec.name] = TensorSpec(spec.shape, "F32" if spec.dtype == "float32" else "BF16")
+        _validate_rank_training_inventory(manifest, model_inventory, configuration)
+        if saved["mode"] not in ("full_replica_dp", "expert_parallel", "mixed"):
             raise CheckpointError("unsupported training ownership")
         if manifest.successful_step != first.successful_step:
             raise CheckpointError("rank optimizer steps differ")
@@ -439,7 +491,8 @@ def _training_set_members(root, transaction_ids, *, config_identity, architectur
                 or manifest.metadata["scheduler_state"].get("completed_step") != manifest.successful_step):
             raise CheckpointError("training/cursor/scheduler version is not committed consistently")
     intervals = []
-    for manifest in manifests:
+    source_cursors = {}
+    for index, manifest in enumerate(manifests):
         cursor = manifest.metadata["data_cursor"]
         if set(cursor) != {"manifest_identity", "tokenizer_identity", "ordinal", "order", "start_ordinal", "end_ordinal"}:
             raise CheckpointError("invalid cursor schema")
@@ -448,16 +501,134 @@ def _training_set_members(root, transaction_ids, *, config_identity, architectur
             raise CheckpointError("cursor identity/order mismatch")
         if any(type(cursor[k]) is not int for k in ("ordinal", "start_ordinal", "end_ordinal")) or not 0 <= cursor["start_ordinal"] <= cursor["ordinal"] <= cursor["end_ordinal"]:
             raise CheckpointError("invalid committed cursor bounds")
+        if layout is not None:
+            d,e,c,t = layout.coordinates[index]
+            key = (d,e)
+            if key in source_cursors and source_cursors[key] != cursor:
+                raise CheckpointError("CP/TP source replica cursors diverge")
+            source_cursors[key] = cursor
+            if c != 0 or t != 0: continue
         intervals.append((cursor["start_ordinal"], cursor["end_ordinal"]))
     intervals.sort()
-    if intervals[0][0] != 0 or any(a[1] != b[0] for a, b in zip(intervals, intervals[1:])):
+    documents = first.metadata["corpus_documents"]
+    if (type(documents) is not int or documents < 0 or intervals[-1][1] != documents or
+            intervals[0][0] != 0 or any(a[1] != b[0] for a, b in zip(intervals, intervals[1:]))):
         raise CheckpointError("rank cursor partitions overlap or leave gaps")
     return manifests
 
 
+def _validate_rank_training_inventory(manifest, model_inventory, configuration):
+    """Complete stable-name state admission before a rank set is published."""
+    from shinra.training.scheduler import StepScheduler
+    from torch.optim import AdamW
+    meta = manifest.metadata
+    if (meta["tokenizer_identity"] != configuration.get("tokenizer.artifact_identity") or
+            meta["corpus_manifest_identity"] != configuration.get("data.manifest_identity") or
+            meta["precision_policy"] != {"model": "bf16", "router": "float32", "optimizer": "fp32_master"}):
+        raise CheckpointError("snapshot tokenizer/corpus/precision differs from source configuration")
+    expected = {"model": model_inventory,
+                "master": {n: TensorSpec(s.shape, "F32") for n,s in model_inventory.items()},
+                "router": {f"layers.{i}.{suffix}": TensorSpec(shape, dtype) for i in range(48)
+                           for suffix,shape,dtype in (("bias", (128,), "F32"), ("completed_step", (), "I64"))}}
+    optimizer = meta["optimizer"]
+    if (configuration.get("training.optimizer") != "adamw" or
+            configuration.get("training.optimizer_precision") != "fp32_master" or
+            configuration.get("training.parameter_group_policy") != "uniform_decay"):
+        raise CheckpointError("source configuration does not admit the implemented optimizer")
+    if optimizer["optimizer_type"] != f"{AdamW.__module__}.{AdamW.__qualname__}":
+        raise CheckpointError("snapshot optimizer implementation differs from admitted AdamW")
+    step = manifest.successful_step
+    scheduler = StepScheduler(configuration, completed_step=step)
+    if meta["scheduler_state"] != scheduler.metadata():
+        raise CheckpointError("snapshot scheduler does not match source configuration")
+    balancing = {"algorithm": "bounded_sign", "learning_rate": configuration.get("router.balancing.learning_rate"),
+                 "bound": configuration.get("router.balancing.bound"), "completed_step": step}
+    if meta["balancing"] != [balancing for _ in range(48)]:
+        raise CheckpointError("snapshot balancing policy does not match configuration")
+    if len(optimizer["parameter_groups"]) != 1:
+        raise CheckpointError("canonical optimizer requires one explicit uniform-decay group")
+    options = optimizer["parameter_groups"][0]["options"]
+    expected_lr = configuration.get("training.learning_rate") if step == 0 else StepScheduler(configuration, completed_step=step-1).next_lr()
+    required_options = {"lr": expected_lr, "betas": [configuration.get("training.beta1"), configuration.get("training.beta2")],
+                        "eps": configuration.get("training.epsilon"), "weight_decay": configuration.get("training.weight_decay"),
+                        "amsgrad": False, "maximize": False, "foreach": False, "capturable": False,
+                        "differentiable": False, "fused": False}
+    if any(k not in options or options[k] != value for k,value in required_options.items()):
+        raise CheckpointError("snapshot optimizer policy differs from the canonical adapter")
+    names = [n for g in optimizer["parameter_groups"] for n in g["parameter_names"]]
+    if len(names) != len(set(names)) or set(names) != set(model_inventory):
+        raise CheckpointError("optimizer parameter groups do not cover the owned model exactly")
+    states = optimizer["parameter_state"]
+    if set(states) != (set(model_inventory) if manifest.successful_step else set()):
+        raise CheckpointError("incomplete optimizer state for committed step")
+    expected["optimizer"] = {}
+    for name, state in states.items():
+        if set(state) != {"step", "exp_avg", "exp_avg_sq"}:
+            raise CheckpointError("complete AdamW state required")
+        for key, entry in state.items():
+            if entry.get("kind") != "tensor":
+                raise CheckpointError("optimizer tensor payload cannot be JSON scalars")
+            tensor_name = entry["tensor_name"]
+            if tensor_name in expected["optimizer"]:
+                raise CheckpointError("duplicate optimizer tensor ownership")
+            expected["optimizer"][tensor_name] = TensorSpec(() if key == "step" else model_inventory[name].shape, "F32")
+    for kind, inventory in expected.items():
+        actual = {r.name: TensorSpec(r.shape, r.dtype) for r in manifest.groups[kind].records}
+        if actual != inventory:
+            raise CheckpointError("incomplete or incorrect training tensor inventory: " + kind)
+    devices = meta.get("rng_devices")
+    if (not isinstance(devices, list) or any(type(d) is not int or d < 0 for d in devices) or
+            len(set(devices)) != len(devices)):
+        raise CheckpointError("explicit unique RNG device inventory required")
+    rng = {r.name: r for r in manifest.groups["rng"].records}
+    if set(rng) != {"torch.cpu"} | {f"torch.cuda.{d}" for d in devices}:
+        raise CheckpointError("incomplete RNG tensor inventory")
+    if any(r.dtype != "U8" or len(r.shape) != 1 or r.shape[0] <= 0 for r in rng.values()):
+        raise CheckpointError("invalid RNG shape/dtype")
+
+
+def read_training_set(root: str | Path, set_id: str, *, configuration, ranks=None):
+    """Read a complete committed rank set with pinned configuration and hashes.
+
+    No tensors are applied. Caller must keep the underlying storage immutable
+    through subsequent reads; this is not a crash-durability guarantee.
+    """
+    if not isinstance(set_id, str) or not _TRANSACTION.fullmatch(set_id):
+        raise CheckpointError("invalid checkpoint set ID")
+    marker = Path(root) / ("set-" + set_id) / "COMMITTED.json"
+    if marker.is_symlink() or marker.parent.is_symlink() or not marker.is_file():
+        raise CheckpointError("complete training set marker is missing or unsafe")
+    body = _read_json(marker)
+    if not isinstance(body, dict) or set(body) != {"schema_version", "format", "config_identity", "architecture_identity", "ranks", "transactions"}:
+        raise CheckpointError("invalid training set schema")
+    if type(body["schema_version"]) is not int or body["schema_version"] != 1 or body["format"] != "safetensors":
+        raise CheckpointError("unsupported training set version/format")
+    saved_ranks = body["ranks"]
+    if (not isinstance(saved_ranks, list) or not saved_ranks or
+            any(type(r) is not int or r < 0 for r in saved_ranks) or len(set(saved_ranks)) != len(saved_ranks)):
+        raise CheckpointError("invalid complete rank inventory")
+    if (body["config_identity"] != configuration.identity or
+            body["architecture_identity"] != configuration.architecture_identity or
+            (ranks is not None and saved_ranks != list(ranks))):
+        raise CheckpointError("training set configuration/ownership mismatch")
+    entries = body["transactions"]
+    if not isinstance(entries, list) or any(not isinstance(e, dict) or set(e) != {"id", "sha256"} for e in entries):
+        raise CheckpointError("invalid transaction inventory")
+    for entry in entries:
+        if not isinstance(entry["id"], str) or not _TRANSACTION.fullmatch(entry["id"]):
+            raise CheckpointError("invalid rank transaction ID")
+        _digest(entry["sha256"], "rank manifest digest")
+    manifests = _training_set_members(root, tuple(e["id"] for e in entries),
+        config_identity=configuration.identity, architecture_identity=configuration.architecture_identity,
+        ranks=tuple(saved_ranks), configuration=configuration)
+    if any(m.sha256 != e["sha256"] for m,e in zip(manifests, entries)):
+        raise CheckpointError("rank manifest changed after set publication")
+    return body, manifests
+
+
 def publish_training_set(root: str | Path, *, set_id: str, transaction_ids: tuple[str, ...],
                          config_identity: str, architecture_identity: str, ranks: tuple[int, ...],
-                         guarantee: AtomicPublicationGuarantee) -> Path:
+                         guarantee: AtomicPublicationGuarantee, configuration=None) -> Path:
     """Publish JSON admission for a complete set of already committed rank shards.
 
     Caller freezes writers and supplies verified same-directory atomic-replace
@@ -468,7 +639,7 @@ def publish_training_set(root: str | Path, *, set_id: str, transaction_ids: tupl
     if not ranks or any(type(rank) is not int or rank < 0 for rank in ranks) or len(set(ranks)) != len(ranks):
         raise CheckpointError("explicit unique process ranks required")
     manifests = _training_set_members(root, transaction_ids, config_identity=config_identity,
-                                      architecture_identity=architecture_identity, ranks=ranks)
+                                      architecture_identity=architecture_identity, ranks=ranks, configuration=configuration)
     directory = Path(root) / ("set-" + set_id)
     directory.mkdir(exist_ok=False)
     body = {"schema_version": 1, "format": "safetensors", "config_identity": config_identity,

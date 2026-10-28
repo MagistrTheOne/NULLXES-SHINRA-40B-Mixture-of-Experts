@@ -26,17 +26,28 @@ class ModelOutput:
 
 
 class ShinraForCausalLM(nn.Module):
-    def __init__(self, config: Configuration, *, device: str, expert_execution=None, context_execution=None, tensor_execution=None):
+    def __init__(self, config: Configuration, *, device: str, expert_execution=None, context_execution=None, tensor_execution=None, parallel_execution=None):
         super().__init__()
         require_operation(config, "model")
         recipe = InitializationRecipe.from_configuration(config)
+        self.parallel_execution = parallel_execution
+        if parallel_execution is not None:
+            from shinra.distributed.parallelism import MixedExecution
+            from shinra.distributed.ownership import ParallelLayout
+            if not isinstance(parallel_execution, MixedExecution) or any(x is not None for x in (expert_execution, context_execution, tensor_execution)):
+                raise ValueError("mixed execution owns all component groups explicitly")
+            admitted = ParallelLayout.from_manifest(config.get("distributed.ownership_manifest"))
+            if admitted.identity != parallel_execution.layout.identity or config.get("distributed.backend") != parallel_execution.groups["world"].backend:
+                raise ValueError("mixed layout differs from canonical configuration")
+            parallel_execution.groups["world"].agree({"configuration": config.identity, "layout": admitted.to_dict()}, device=device)
+            tensor_execution, expert_execution, context_execution = parallel_execution.tensor, parallel_execution.expert, parallel_execution.context
         self.tensor_execution = tensor_execution
         if tensor_execution is not None:
             from shinra.distributed.parallelism import TensorExecution
             if not isinstance(tensor_execution, TensorExecution) or config.get("distributed.backend") != tensor_execution.group.backend:
                 raise ValueError("explicit TP group with matching configured backend required")
-            if expert_execution is not None or context_execution is not None:
-                raise ValueError("BLOCKED: mixed TP/EP/CP group ownership is not yet admitted")
+            if parallel_execution is None and (expert_execution is not None or context_execution is not None):
+                raise ValueError("BLOCKED: combined TP/EP/CP requires the explicit MixedExecution contract")
             tensor_execution.group.agree({"configuration": config.identity, "tp_ranks": tensor_execution.group.ranks}, device=device)
         if expert_execution is not None:
             from shinra.distributed.expert_parallel import ExpertExecution
@@ -45,7 +56,8 @@ class ShinraForCausalLM(nn.Module):
             if config.get("distributed.ownership_manifest") is None or config.get("distributed.backend") != expert_execution.group.backend:
                 raise ValueError("approved ownership manifest and matching backend required")
             from shinra.distributed.ownership import ExpertOwnership
-            admitted = ExpertOwnership.from_manifest(config.get("distributed.ownership_manifest"))
+            admitted = (ExpertOwnership.from_manifest(config.get("distributed.ownership_manifest")) if parallel_execution is None
+                        else expert_execution.ownership)
             if admitted.identity != expert_execution.ownership.identity:
                 raise ValueError("EP ownership differs from configured manifest")
             expert_execution.group.agree({"config": config.identity, "ownership": expert_execution.ownership.identity}, device=device)
@@ -69,23 +81,43 @@ class ShinraForCausalLM(nn.Module):
         self.final_norm = RMSNorm(config, recipe, name="final_norm.weight", device=device, tensor_execution=tensor_execution)
         self.lm_head = LanguageModelHead(config, recipe, device=device, tensor_execution=tensor_execution)
 
-    def forward(self, token_ids: torch.Tensor, positions: torch.Tensor, segments: torch.Tensor,
+    def validate_inputs(self, token_ids: torch.Tensor, positions: torch.Tensor, segments: torch.Tensor,
                 token_uids: torch.Tensor, balancing_bias: torch.Tensor, *,
-                replay_assignments: tuple[torch.Tensor, ...] | None = None) -> ModelOutput:
-        """Full document-aware causal forward; padding must be compacted by caller.
+                replay_assignments: tuple[torch.Tensor, ...] | None = None, context_range=None) -> None:
+        """Canonical original-forward admission, never called by block replay.
 
-        Each contiguous segment begins at position zero. Arbitrary context shards
-        and decode continuations require their own explicit attention integration.
+        Collective order is TP input agreement, then CP bias/metadata agreement.
+        This boundary reads metadata only and does not update routing state.
         """
         if token_ids.ndim != 1:
             raise ValueError("expected compact token IDs [T]")
         for value in (token_ids, positions, segments, token_uids):
             if value.shape != token_ids.shape or value.dtype != torch.int64 or value.device != self.embeddings.weight.device:
                 raise ValueError("token metadata must be same-device int64 [T]")
-        if balancing_bias.shape != (self.layer_count, self.expert_count):
-            raise ValueError("expected balancing snapshots [48,128]")
+        if (balancing_bias.shape != (self.layer_count, self.expert_count) or
+                balancing_bias.dtype != torch.float32 or balancing_bias.device != token_ids.device or
+                balancing_bias.requires_grad or not bool(torch.isfinite(balancing_bias).all())):
+            raise ValueError("expected finite nontrainable same-device FP32 balancing snapshots [48,128]")
+        if bool(((token_ids < 0) | (token_ids >= self.embeddings.vocab_size)).any()):
+            raise ValueError("token ID outside vocabulary")
+        if token_ids.numel() > self.context or bool((token_uids < 0).any()) or token_uids.unique().numel() != token_uids.numel():
+            raise ValueError("context bound or unique nonnegative token UID contract violated")
         if replay_assignments is not None and len(replay_assignments) != self.layer_count:
             raise ValueError("recomputation requires assignments for all 48 layers")
+        if replay_assignments is not None:
+            for selected in replay_assignments:
+                if (selected.shape != (token_ids.numel(), 8) or selected.dtype != torch.int64 or
+                        selected.device != token_ids.device or bool(((selected < 0) | (selected >= 128)).any()) or
+                        bool((selected[:, 1:] <= selected[:, :-1]).any())):
+                    raise ValueError("invalid original Top-8 replay assignments")
+        if self.parallel_execution is not None:
+            execution = self.parallel_execution
+            for role, group in execution.groups.items():
+                if group.ranks != execution.layout.members(execution.rank, role):
+                    raise ValueError("logical process-group membership changed")
+            if (self.tensor_execution is not execution.tensor or self.expert_execution is not execution.expert or
+                    self.context_execution is not execution.context):
+                raise ValueError("model execution components differ from admitted mixed groups")
         if self.tensor_execution is not None:
             self.tensor_execution.group.agree({"tokens": token_ids.detach().cpu().tolist(),
                                                "positions": positions.detach().cpu().tolist(),
@@ -101,7 +133,11 @@ class ShinraForCausalLM(nn.Module):
         previous_position = -1
         checked_positions, checked_segments = positions, segments
         if self.context_execution is not None:
-            checked_positions, checked_segments = self.context_execution.metadata(positions, segments, token_uids)
+            self.context_execution.group.agree(balancing_bias.detach().cpu().tolist(), device=token_ids.device)
+            checked_positions, checked_segments = self.context_execution.metadata(
+                positions, segments, token_uids, context_range=context_range)
+        elif context_range is not None and context_range != (0, token_ids.numel(), token_ids.numel()):
+            raise ValueError("resident context must own the complete sequence")
         for segment, position in zip(checked_segments.detach().cpu().tolist(), checked_positions.detach().cpu().tolist()):
             if segment != previous_segment:
                 if segment in seen or position != 0:
@@ -110,6 +146,13 @@ class ShinraForCausalLM(nn.Module):
             elif position != previous_position + 1:
                 raise ValueError("segment positions must advance exactly once per token")
             previous_segment, previous_position = segment, position
+
+    def forward(self, token_ids: torch.Tensor, positions: torch.Tensor, segments: torch.Tensor,
+                token_uids: torch.Tensor, balancing_bias: torch.Tensor, *,
+                replay_assignments: tuple[torch.Tensor, ...] | None = None, context_range=None) -> ModelOutput:
+        """Full document-aware forward with explicit global CP ownership bounds."""
+        self.validate_inputs(token_ids, positions, segments, token_uids, balancing_bias,
+                             replay_assignments=replay_assignments, context_range=context_range)
         hidden = self.embeddings(token_ids)
         assignments, counts = [], []
         for index, block in enumerate(self.layers):
