@@ -89,7 +89,7 @@ No datasets, corpus packs, archives, training shards, learned tokenizer artifact
 
 AST parsed all 59 Python modules without importing SHINRA, Torch or Safetensors. Explicit internal import targets resolve; the source import graph has no detected cycles. Reviewed input/cursor ownership, CP boundary labels, empty-work paths, collective adjoints/order, TP replica counting and checkpoint producer/consumer inventories. D02 was recalculated using integer arithmetic without tensor allocation. Canonical YAML content and dependency files are unchanged.
 
-Git whitespace checks and file inventory/credential-pattern inspection are part of publication admission. Such inspection is not a guarantee that arbitrary secrets are detectable. No generated test cases were used.
+Git working/staged whitespace checks passed. Inspection of all 85 project files outside .git found no forbidden payload extensions, test paths, binary NUL content, files over 1 MiB or matches for the inspected credential patterns. The largest file was 41,684 bytes at that scan. Canonical YAML, requirements.txt and pyproject.toml matched the baseline. Such inspection is not a guarantee that arbitrary secrets are detectable. No generated test cases were used.
 
 API evidence: official [PyTorch 2.9 distributed documentation](https://docs.pytorch.org/docs/2.9/distributed.html) was inspected for group ordering and waiting for async operations before crossing groups; [checkpoint documentation](https://docs.pytorch.org/docs/2.9/checkpoint.html) for non-reentrant contexts and full replay. The current `stable` redirect target was unavailable to the browsing tool. These references do not identify or certify the installed GM runtime; no version was imported and no dependency changed.
 
@@ -105,4 +105,36 @@ No model initialization, forward/backward, training, inference, tests, synthetic
 
 ## GIT PUBLICATION
 
-One final commit is authorized with message `feat(shinra): complete distributed training integration and source remediation`. This report is part of that commit and does not predict its own SHA or claim a push before Git confirmation. The final delivery records the actual local/remote SHA, branch and worktree status. Complete changed-file inventory is the commit's Git diff against the baseline above.
+During the final audit, another writer committed and published the current source work as `2657aa8c093d7b0d663c575c70af41be33fe78af` (`Big update for SHINRA40B`). Git reflog and ls-remote confirmed it; it is a direct descendant of the approved baseline and contains the 23-file source/report increment. The executing agent did not create or push that commit. The working source matched that published tree; only documentation reconciliation remained. That commit is preserved without amendment, reset, rebase or force push.
+
+The executing agent will create one final follow-up commit with the authorized message `feat(shinra): complete distributed training integration and source remediation`. Its scope is current documentation, final review and cumulative publication inventory. This report does not predict its own SHA or claim that final push before Git confirmation. The delivery records the actual local/remote SHA, branch and worktree status. The original one-commit total was overtaken by the concurrent publication; history is preserved rather than rewritten to simulate it.
+
+
+### Cumulative Order 010 file inventory
+
+- `.gitignore`
+- `Readme.md`
+- `docs/ARCHITECTURE_CHANGELOG.md`
+- `docs/D06_DATA_PIPELINE.md`
+- `docs/D07_PRETRAINING.md`
+- `docs/D08_PROJECT_STRUCTURE.md`
+- `docs/D09_DEPENDENCIES.md`
+- `docs/D10_DECISIONS.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `docs/MODULE_CONTRACTS.md`
+- `docs/ORDER_009_DISTRIBUTED_COMPLETION.md`
+- `docs/ORDER_010_FINAL_SOURCE_REVIEW.md`
+- `src/shinra/checkpoint/__init__.py`
+- `src/shinra/checkpoint/recovery.py`
+- `src/shinra/checkpoint/transactions.py`
+- `src/shinra/core/validation.py`
+- `src/shinra/data/packing.py`
+- `src/shinra/distributed/communication.py`
+- `src/shinra/distributed/context_parallel.py`
+- `src/shinra/distributed/ownership.py`
+- `src/shinra/distributed/parallelism.py`
+- `src/shinra/inference/generation.py`
+- `src/shinra/model/modeling.py`
+- `src/shinra/moe/router.py`
+- `src/shinra/training/engine.py`
+- `src/shinra/training/optimizer.py`

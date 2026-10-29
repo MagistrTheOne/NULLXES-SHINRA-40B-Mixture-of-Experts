@@ -170,7 +170,7 @@ Parameter shapes, router behavior, numerical precision, attention semantics and 
 
 The parameter counts above follow the documented architecture assumptions and do not represent a loaded or executed model.
 
-For the full derivation, see [D02 — Parameter Accounting](docs/D02_parameter_accounting.md).
+For the full derivation, see [D02 — Parameter Accounting](docs/D02_PARAMETERS.md).
 
 ---
 
@@ -231,7 +231,7 @@ The router is designed to preserve expert assignments even when workload distrib
 
 These properties define the intended implementation contract; they are not claims of completed runtime validation.
 
-Read the full specification: [D03 — MoE Routing](docs/D03_moe_routing.md).
+Read the full specification: [D03 — MoE Routing](docs/D03_ROUTING.md).
 
 ---
 
@@ -255,7 +255,7 @@ The documented RoPE design proposes fixed-frequency rotary embeddings with a bas
 
 Long-context performance will require actual training and independently obtained evaluation results.
 
-Read: [D04 — Attention & Long Context](docs/D04_attention_long_context.md).
+Read: [D04 — Attention & Long Context](docs/D04_ATTENTION_CONTEXT.md).
 
 ---
 
@@ -291,7 +291,7 @@ No pretrained vocabulary or automatically selected public training corpus is inc
 
 Tokenizer training and final vocabulary construction depend on an approved data corpus.
 
-Read: [D05 — Native Tokenizer](docs/D05_native_tokenizer.md).
+Read: [D05 — Native Tokenizer](docs/D05_TOKENIZER.md).
 
 ---
 
@@ -366,10 +366,10 @@ The following technical documents are available in the repository:
 
 | Document | Description |
 |:---|:---|
-| [D02 — Parameter Accounting](docs/D02_parameter_accounting.md) | Mathematical derivation of model parameters |
-| [D03 — MoE Routing](docs/D03_moe_routing.md) | Expert selection, dispatch, balancing and backward contracts |
-| [D04 — Attention & Long Context](docs/D04_attention_long_context.md) | GQA, QK-Norm, RoPE, attention masks and context |
-| [D05 — Native Tokenizer](docs/D05_native_tokenizer.md) | Byte-level BPE, token IDs and serialization |
+| [D02 — Parameter Accounting](docs/D02_PARAMETERS.md) | Mathematical derivation of model parameters |
+| [D03 — MoE Routing](docs/D03_ROUTING.md) | Expert selection, dispatch, balancing and backward contracts |
+| [D04 — Attention & Long Context](docs/D04_ATTENTION_CONTEXT.md) | GQA, QK-Norm, RoPE, attention masks and context |
+| [D05 — Native Tokenizer](docs/D05_TOKENIZER.md) | Byte-level BPE, token IDs and serialization |
 | [Documentation Index](docs/README.md) | Status of architecture decisions and design artifacts |
 
 Documentation distinguishes accepted requirements, calculated properties and proposed decisions. Proposed settings are not automatically production defaults.
@@ -378,7 +378,9 @@ Documentation distinguishes accepted requirements, calculated properties and pro
 
 ## Development Status
 
-**Current classification: Architecture & Engineering.**
+**Order 010: mandatory source integration complete; runtime unverified; Training Ready: NO-GO.**
+
+Current contracts and remaining operational decisions: [Order 010 final source review](docs/ORDER_010_FINAL_SOURCE_REVIEW.md). Corpora, learned tokenizer artifacts and checkpoint payloads must remain outside this repository.
 
 | Milestone | Status |
 |:---|:---|
@@ -387,8 +389,8 @@ Documentation distinguishes accepted requirements, calculated properties and pro
 | MoE routing contract | Documented |
 | Long-context attention contract | Documented |
 | Native tokenizer contract | Documented |
-| Source implementation | In development / static review only; model/checkpoint not runtime verified |
-| Safetensors checkpoint source | Implemented; backend durability and training resume integration unverified |
+| Source implementation | Order 010 source scope complete; static review only |
+| Safetensors checkpoint source | Mixed resume and explicit resident reconstruction implemented; runtime/durability unverified |
 | Tokenizer training | Not reported |
 | Model pretraining | Not reported |
 | Model evaluation | Not reported |
@@ -481,3 +483,8 @@ Native tokenizer/data, fresh-run DP training, distributed primitives and single-
 ### Order 008 continuation
 
 EP is connected to model/training; CP is connected to model attention. Complete-set DP/EP Safetensors resume source has been added. TP and CP training remain incomplete. All execution remains prohibited and unverified. [Current report](docs/ORDER_008_PROGRESS.md).
+
+
+### Order 010 current source status
+
+The dated Order 007/008 entries above are historical. Mixed training, full-state resume, packing/recomputation fixes and explicit distributed-to-resident reconstruction are now implemented. Execution and Training Ready remain NO-GO. See the [final source review](docs/ORDER_010_FINAL_SOURCE_REVIEW.md).

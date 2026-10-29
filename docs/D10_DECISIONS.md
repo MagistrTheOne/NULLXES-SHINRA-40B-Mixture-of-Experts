@@ -53,3 +53,11 @@ D05 exact BPE требует границ content fragments. Data streaming не
 ## Order 007 source decisions — 26.10.2026
 
 Three operational schema fields added as null: training.optimizer_precision, training.parameter_group_policy, training.gradient_clip_norm_type. Implemented candidates are fp32_master, uniform_decay and l2; adding their validation does not approve their use. Uniform decay applies also to parameters with globally zero gradients. No pre-existing null filled. Native tokenizer trainer is exact in-memory pair recounting, without invented vocabulary. Whole documents exceeding context are rejected until split policy approval. Full distributed assembly, coordinated checkpoint-set publication/restore and structured chat header grammar remain incomplete.
+
+## Order 010 source decisions — 29.10.2026
+
+Founder authorized source implementation and publication from ed34d867. `training.microbatch_tokens` is the complete logical sequence budget per source BEFORE CP, bounded by the architectural context; no local-rank reinterpretation or numeric default. Whole-document continuation/splitting remains unapproved; an oversized operation fails explicitly with committed cursor preserved. No real corpus belongs in this repository; external corpus/storage locations remain UNKNOWN.
+
+Mixed-to-resident reconstruction is an explicitly invoked source operation with source/destination configuration snapshots, pinned set identity and approval reference. Architecture identity must remain identical. Training resume cannot silently change configuration or layout. These are contracts, not execution approval, new YAML files or actual trained artifacts. Older checkpoint metadata missing the strengthened complete-set fields is rejected rather than migrated implicitly. No actual checkpoint migration occurred.
+
+Orders 007–009 unfinished integration entries are superseded by [Order 010](ORDER_010_FINAL_SOURCE_REVIEW.md). Source scope complete; initialization/tokenizer/corpus/training settings/ownership/runtime/storage approvals and runtime verification remain absent. Chat/FIM and segmented-continuation decisions remain outside the completed plain causal-training source scope.

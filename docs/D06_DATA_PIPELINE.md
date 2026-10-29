@@ -43,3 +43,7 @@ register_source(record) → approved registry entry; ingest(manifest,cursor) →
 ## UNKNOWN / BLOCKED
 
 Источники, лицензии реального корпуса, manifest, tokenizer artifact, sampling и filtering thresholds UNKNOWN. Ingestion/pretraining BLOCKED без approved manifest. Независимая реализация interfaces после разрешения возможна без корпуса. NOT EXECUTED: data download/generation/ingestion/tokenization.
+
+## Order 010 packing contract — 29.10.2026
+
+`training_sequence_budget(config)` is the single explicit per-source global sequence budget. `DocumentPacker.capacity` uses it, while `context_capacity` stays 262144 and defines stable UID stride. Stream packing includes BOS/EOS/separator overhead and checks capacity before batch materialization. Training checks the complete sequence before CP, then CP owns floor-divided global prediction ranges with real cross-shard next-token targets. Oversized whole documents are rejected with source/document/ordinal/length diagnostics; no segmented continuation is inferred from this proposal. Abort restores the committed document cursor. No datasets or sample documents were added.

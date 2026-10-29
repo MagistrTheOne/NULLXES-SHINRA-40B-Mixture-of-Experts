@@ -1,5 +1,13 @@
 # D08 — Project structure
 
+## Current status — Order 010 / 29.10.2026
+
+SOURCE COMPLETE: ACHIEVED for the mandatory Order 010 source scope. RUNTIME UNVERIFIED. TRAINING READY: NO-GO.
+
+The current implementation includes a shared global packing/microbatch budget, common ordinary/recomputation input validation, mixed DP/EP/TP/CP training, uneven EP zero-work participation, replica-aware gradient clipping, complete Safetensors rank-set admission/resume and explicit mixed-to-resident weight reconstruction. All operational unknowns remain null. No model, tests, checkpoint I/O or data execution was performed.
+
+The authoritative current contracts, limitations, static evidence and publication scope are in [Order 010 final source review](ORDER_010_FINAL_SOURCE_REVIEW.md). Earlier dated entries below are historical increments and do not describe the current implementation status.
+
 25.10.2026. VERIFIED: целевая структура V3.0; фактический исходный набор частично реализован. Текущий inventory и blockers приведены в [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md) и [Engineering Order 005 audit](ENGINEERING_ORDER_005_AUDIT.md).
 
 ```text
